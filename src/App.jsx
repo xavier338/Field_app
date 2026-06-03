@@ -322,9 +322,8 @@ export default function App() {
     )
     const isExplicitAdmin = userRole === "admin"
     const isExplicitEmployee = userRole === "employee"
-    const isEmployeeUserLocal =
-      isExplicitEmployee || (!isExplicitAdmin && Boolean(currentEmployeeProfileLocal))
-    const appRoleLocal = isEmployeeUserLocal ? "employee" : "admin"
+    const isEmployeeUserLocal = isExplicitEmployee || Boolean(currentEmployeeProfileLocal)
+    const appRoleLocal = isExplicitAdmin ? "admin" : "employee"
 
     if (appRoleLocal === "employee") {
       loadTimeOffRequests(signedInEmailLocal)
@@ -348,9 +347,8 @@ export default function App() {
     )
     const isExplicitAdmin = userRole === "admin"
     const isExplicitEmployee = userRole === "employee"
-    const isEmployeeUserLocal =
-      isExplicitEmployee || (!isExplicitAdmin && Boolean(currentEmployeeProfileLocal))
-    const appRoleLocal = isEmployeeUserLocal ? "employee" : "admin"
+    const isEmployeeUserLocal = isExplicitEmployee || Boolean(currentEmployeeProfileLocal)
+    const appRoleLocal = isExplicitAdmin ? "admin" : "employee"
 
     if (appRoleLocal !== "admin") {
       setAdminNotifications([])
@@ -3862,9 +3860,8 @@ export default function App() {
   ).trim()
   const isExplicitAdmin = userRole === "admin"
   const isExplicitEmployee = userRole === "employee"
-  const isEmployeeUser =
-    isExplicitEmployee || (!isExplicitAdmin && Boolean(currentEmployeeProfile))
-  const appRole = isEmployeeUser ? "employee" : "admin"
+  const isEmployeeUser = isExplicitEmployee || Boolean(currentEmployeeProfile)
+  const appRole = isExplicitAdmin ? "admin" : "employee"
   const currentEmployeeName = currentEmployeeProfile?.name || metadataDisplayName || ""
   const accountDisplayName = currentEmployeeName || metadataDisplayName || ""
   const accountChipLabel = accountDisplayName || session.user.email
