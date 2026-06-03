@@ -185,6 +185,7 @@ export default function App() {
   const [nextPhaseNotice, setNextPhaseNotice] = useState({ type: "", message: "" })
   const [assigningJobId, setAssigningJobId] = useState(null)
   const [employeeAssignNotice, setEmployeeAssignNotice] = useState({ type: "", message: "" })
+  const [detailsAssignName, setDetailsAssignName] = useState("")
   const [employees, setEmployees] = useState([])
   const [employeeLoading, setEmployeeLoading] = useState(false)
   const [newEmployeeName, setNewEmployeeName] = useState("")
@@ -1898,6 +1899,9 @@ export default function App() {
     }
 
     setSelectedJobId(jobId)
+    const selectedJob = jobs.find((item) => item.id === jobId)
+    setDetailsAssignName(parseAssignees(selectedJob?.assigned_to)[0] || "")
+    setEmployeeAssignNotice({ type: "", message: "" })
     setEmployeeJobNote("")
     setEmployeeJobActionNotice({ type: "", message: "" })
     setNextPhaseAssignees([])
@@ -1916,6 +1920,7 @@ export default function App() {
     setEmployeeJobActionNotice({ type: "", message: "" })
     setNextPhaseAssignees([])
     setNextPhaseNotice({ type: "", message: "" })
+    setDetailsAssignName("")
     setJobEvents([])
     setViewMode("dashboard")
   }
@@ -2413,6 +2418,18 @@ export default function App() {
     }
 
     setAssigningJobId(null)
+  }
+
+  async function assignSelectedJobFromDetails() {
+    if (!selectedJob?.id) return
+
+    const normalizedName = normalizeEmployeeName(detailsAssignName)
+    if (!normalizedName) {
+      setEmployeeAssignNotice({ type: "error", message: "Please choose an employee to assign." })
+      return
+    }
+
+    await assignWorkOrderToEmployee(selectedJob.id, normalizedName)
   }
 
   async function createNextPhaseWorkOrder(job) {
@@ -6632,6 +6649,30 @@ export default function App() {
                     <div className="job-summary-item">
                       <span className="job-summary-label">Assigned To</span>
                       <p className="job-summary-value">{formatAssignees(selectedJob.assigned_to)}</p>
+                      {canManageJobs ? (
+                        <div className="employee-manage-actions">
+                          <select
+                            value={detailsAssignName}
+                            onChange={(e) => setDetailsAssignName(e.target.value)}
+                            disabled={assigningJobId === selectedJob.id}
+                          >
+                            <option value="">Select employee</option>
+                            {assignableEmployeeNames.map((name) => (
+                              <option key={`details-assign-${name}`} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="primary-btn"
+                            onClick={assignSelectedJobFromDetails}
+                            disabled={assigningJobId === selectedJob.id || !detailsAssignName}
+                          >
+                            {assigningJobId === selectedJob.id ? "Assigning..." : "Assign To"}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="job-summary-item">
                       <span className="job-summary-label">Scheduled Date</span>
@@ -6668,6 +6709,18 @@ export default function App() {
                       <p className="job-summary-value">{formatDateTime(selectedJob.updated_at)}</p>
                     </div>
                   </div>
+
+                  {canManageJobs && employeeAssignNotice.message ? (
+                    <p
+                      className={`notice-text ${
+                        employeeAssignNotice.type === "error"
+                          ? "notice-text--error"
+                          : "notice-text--success"
+                      }`}
+                    >
+                      {employeeAssignNotice.message}
+                    </p>
+                  ) : null}
 
                   {selectedJobPhaseJobs.length > 1 ? (
                     <div className="phase-chain-panel">
