@@ -63,7 +63,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [userRole, setUserRole] = useState(null)
   const [roleLoading, setRoleLoading] = useState(true)
-  const [email, setEmail] = useState("")
+  const [loginIdentifier, setLoginIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [authError, setAuthError] = useState("")
   const [signingIn, setSigningIn] = useState(false)
@@ -957,6 +957,73 @@ export default function App() {
     return String(value || "")
       .trim()
       .toLowerCase()
+  }
+
+  function normalizeUsername(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+  }
+
+  function getUsernameCandidatesForEmployee(employee) {
+    const emailLocalPart = String(employee?.email || "")
+      .toLowerCase()
+      .split("@")[0]
+    const normalizedName = normalizeEmployeeName(employee?.name || "")
+    const compactName = normalizedName.replace(/\s+/g, "")
+
+    return Array.from(
+      new Set(
+        [emailLocalPart, compactName, normalizedName]
+          .map((value) => normalizeUsername(value))
+          .filter(Boolean)
+      )
+    )
+  }
+
+  async function resolveLoginEmail(identifierValue) {
+    const rawValue = String(identifierValue || "").trim()
+    if (!rawValue) return { email: "", source: "missing" }
+
+    const normalizedEmail = normalizeEmployeeEmail(rawValue)
+    if (normalizedEmail.includes("@")) {
+      return { email: normalizedEmail, source: "email" }
+    }
+
+    const targetUsername = normalizeUsername(rawValue)
+    if (!targetUsername) {
+      return { email: "", source: "invalid_username" }
+    }
+
+    const localMatch = employees.find((employee) => {
+      const candidates = getUsernameCandidatesForEmployee(employee)
+      return candidates.includes(targetUsername)
+    })
+
+    if (localMatch?.email) {
+      return { email: normalizeEmployeeEmail(localMatch.email), source: "username_local" }
+    }
+
+    const { data, error } = await supabase
+      .from("employees")
+      .select("email, name")
+      .not("email", "is", null)
+
+    if (error) {
+      return { email: "", source: "username_lookup_failed", error }
+    }
+
+    const lookupMatch = (data || []).find((employee) => {
+      const candidates = getUsernameCandidatesForEmployee(employee)
+      return candidates.includes(targetUsername)
+    })
+
+    if (!lookupMatch?.email) {
+      return { email: "", source: "username_not_found" }
+    }
+
+    return { email: normalizeEmployeeEmail(lookupMatch.email), source: "username_remote" }
   }
 
   function normalizeEmployeePhone(value) {
@@ -3475,15 +3542,29 @@ export default function App() {
   }
 
   async function signIn() {
-    if (!email || !password) {
-      setAuthError("Email and password are required.")
+    if (!loginIdentifier || !password) {
+      setAuthError("Email/username and password are required.")
       return
     }
 
     setSigningIn(true)
     setAuthError("")
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const resolvedLogin = await resolveLoginEmail(loginIdentifier)
+    if (!resolvedLogin.email) {
+      if (resolvedLogin.source === "username_lookup_failed") {
+        setAuthError("Username lookup is unavailable right now. Use email to sign in.")
+      } else {
+        setAuthError("Could not find that username. Try your email instead.")
+      }
+      setSigningIn(false)
+      return
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: resolvedLogin.email,
+      password
+    })
 
     if (error) {
       setAuthError(error.message)
@@ -3493,11 +3574,12 @@ export default function App() {
   }
 
   async function sendPasswordResetLink() {
-    const normalizedEmail = normalizeEmployeeEmail(email)
+    const resolvedLogin = await resolveLoginEmail(loginIdentifier)
+    const normalizedEmail = normalizeEmployeeEmail(resolvedLogin.email)
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       setForgotPasswordNotice({
         type: "error",
-        message: "Enter a valid email address first."
+        message: "Enter a valid email or username first."
       })
       return
     }
@@ -3571,7 +3653,7 @@ export default function App() {
       return
     }
 
-    const recoveredEmail = session?.user?.email || email
+    const recoveredEmail = session?.user?.email || loginIdentifier
 
     setResetPasswordNotice({
       type: "success",
@@ -3580,7 +3662,7 @@ export default function App() {
     setResetPasswordValue("")
     setResetPasswordConfirmValue("")
     setPasswordRecoveryMode(false)
-    setEmail(recoveredEmail)
+    setLoginIdentifier(recoveredEmail)
     setPassword("")
     await supabase.auth.signOut()
     setResetPasswordSaving(false)
@@ -3802,10 +3884,10 @@ export default function App() {
 
           <div className="auth-grid">
             <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              placeholder="Email or Username"
+              value={loginIdentifier}
+              onChange={(e) => setLoginIdentifier(e.target.value)}
             />
 
             <input
