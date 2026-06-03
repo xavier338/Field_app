@@ -2376,6 +2376,16 @@ export default function App() {
       return
     }
 
+    if (typeof window !== "undefined") {
+      const jobLabel = targetJob.title || targetJob.job_number || "this work order"
+      const shouldAssign = window.confirm(`Assign ${jobLabel} to ${normalizedEmployeeName}?`)
+
+      if (!shouldAssign) {
+        setEmployeeAssignNotice({ type: "", message: "" })
+        return
+      }
+    }
+
     setAssigningJobId(jobId)
     setEmployeeAssignNotice({ type: "", message: "" })
 
@@ -2413,7 +2423,7 @@ export default function App() {
       await loadJobs()
       setEmployeeAssignNotice({
         type: "success",
-        message: `${normalizedEmployeeName} has been assigned successfully.`
+        message: `Assigned ${targetJob.title || targetJob.job_number || "work order"} to ${normalizedEmployeeName}.`
       })
     }
 
@@ -4173,6 +4183,7 @@ export default function App() {
   const canManageJobs = appRole === "admin"
   const canControlTimer = appRole === "admin" || appRole === "employee"
   const canUploadDocuments = appRole === "admin" || appRole === "employee"
+  const isEmployeeDetailsSimpleView = appRole === "employee"
   const selectedJobPhaseInfo = selectedJob ? getJobPhaseInfo(selectedJob) : null
   const selectedJobPhaseJobs = selectedJobPhaseInfo
     ? jobs
@@ -6622,92 +6633,111 @@ export default function App() {
               ) : (
                 <div className="job-details-grid">
                   <div className="job-summary-grid">
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Title</span>
-                      <p className="job-summary-value">{selectedJob.title || "Not set"}</p>
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Job #</span>
-                      <p className="job-summary-value">{selectedJob.job_number || "Not set"}</p>
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Status</span>
-                      <p className="job-summary-value">
-                        <span className={`status-pill ${getStatusPillClass(selectedJob.status)}`}>
-                          {selectedJob.status || "Not set"}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Phase</span>
-                      <p className="job-summary-value">
-                        {selectedJobPhaseInfo
-                          ? `${selectedJobPhaseInfo.currentPhase} of ${selectedJobPhaseJobs.length}`
-                          : "1"}
-                      </p>
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Assigned To</span>
-                      <p className="job-summary-value">{formatAssignees(selectedJob.assigned_to)}</p>
-                      {canManageJobs ? (
-                        <div className="employee-manage-actions">
-                          <select
-                            value={detailsAssignName}
-                            onChange={(e) => setDetailsAssignName(e.target.value)}
-                            disabled={assigningJobId === selectedJob.id}
-                          >
-                            <option value="">Select employee</option>
-                            {assignableEmployeeNames.map((name) => (
-                              <option key={`details-assign-${name}`} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            className="primary-btn"
-                            onClick={assignSelectedJobFromDetails}
-                            disabled={assigningJobId === selectedJob.id || !detailsAssignName}
-                          >
-                            {assigningJobId === selectedJob.id ? "Assigning..." : "Assign To"}
-                          </button>
+                    {isEmployeeDetailsSimpleView ? (
+                      <>
+                        <div className="job-summary-item job-summary-item--full">
+                          <span className="job-summary-label">Title</span>
+                          <p className="job-summary-value">{selectedJob.title || "Not set"}</p>
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Scheduled Date</span>
-                      <p className="job-summary-value">{formatScheduledDate(selectedJob.scheduled_date)}</p>
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Arrived On Site</span>
-                      <p className="job-summary-value">{formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
-                    </div>
-                    <div className="job-summary-item job-summary-item--full">
-                      <span className="job-summary-label">Job Description</span>
-                      <p className="job-summary-value">{selectedJob.job_description || "None"}</p>
-                    </div>
-                    <div className="job-summary-item job-summary-item--full">
-                      <span className="job-summary-label">Location</span>
-                      <p className="job-summary-value">{selectedJob.location || "Not set"}</p>
-                    </div>
-                    {selectedJobMapLinks ? (
-                      <div className="job-summary-item job-summary-item--full">
-                        <span className="job-summary-label">Maps</span>
-                        <p className="job-summary-value map-links-row">
-                          <a href={selectedJobMapLinks.apple} target="_blank" rel="noreferrer">Apple Maps</a>
-                          <span>|</span>
-                          <a href={selectedJobMapLinks.google} target="_blank" rel="noreferrer">Google Maps</a>
-                        </p>
-                      </div>
-                    ) : null}
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Created</span>
-                      <p className="job-summary-value">{formatDateTime(selectedJob.created_at)}</p>
-                    </div>
-                    <div className="job-summary-item">
-                      <span className="job-summary-label">Updated</span>
-                      <p className="job-summary-value">{formatDateTime(selectedJob.updated_at)}</p>
-                    </div>
+                        <div className="job-summary-item job-summary-item--full">
+                          <span className="job-summary-label">Job Description</span>
+                          <p className="job-summary-value">{selectedJob.job_description || "None"}</p>
+                        </div>
+                        <div className="job-summary-item job-summary-item--full">
+                          <span className="job-summary-label">Location</span>
+                          <p className="job-summary-value">{selectedJob.location || "Not set"}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Title</span>
+                          <p className="job-summary-value">{selectedJob.title || "Not set"}</p>
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Job #</span>
+                          <p className="job-summary-value">{selectedJob.job_number || "Not set"}</p>
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Status</span>
+                          <p className="job-summary-value">
+                            <span className={`status-pill ${getStatusPillClass(selectedJob.status)}`}>
+                              {selectedJob.status || "Not set"}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Phase</span>
+                          <p className="job-summary-value">
+                            {selectedJobPhaseInfo
+                              ? `${selectedJobPhaseInfo.currentPhase} of ${selectedJobPhaseJobs.length}`
+                              : "1"}
+                          </p>
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Assigned To</span>
+                          <p className="job-summary-value">{formatAssignees(selectedJob.assigned_to)}</p>
+                          {canManageJobs ? (
+                            <div className="employee-manage-actions">
+                              <select
+                                value={detailsAssignName}
+                                onChange={(e) => setDetailsAssignName(e.target.value)}
+                                disabled={assigningJobId === selectedJob.id}
+                              >
+                                <option value="">Select employee</option>
+                                {assignableEmployeeNames.map((name) => (
+                                  <option key={`details-assign-${name}`} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="primary-btn"
+                                onClick={assignSelectedJobFromDetails}
+                                disabled={assigningJobId === selectedJob.id || !detailsAssignName}
+                              >
+                                {assigningJobId === selectedJob.id ? "Assigning..." : "Assign To"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Scheduled Date</span>
+                          <p className="job-summary-value">{formatScheduledDate(selectedJob.scheduled_date)}</p>
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Arrived On Site</span>
+                          <p className="job-summary-value">{formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
+                        </div>
+                        <div className="job-summary-item job-summary-item--full">
+                          <span className="job-summary-label">Job Description</span>
+                          <p className="job-summary-value">{selectedJob.job_description || "None"}</p>
+                        </div>
+                        <div className="job-summary-item job-summary-item--full">
+                          <span className="job-summary-label">Location</span>
+                          <p className="job-summary-value">{selectedJob.location || "Not set"}</p>
+                        </div>
+                        {selectedJobMapLinks ? (
+                          <div className="job-summary-item job-summary-item--full">
+                            <span className="job-summary-label">Maps</span>
+                            <p className="job-summary-value map-links-row">
+                              <a href={selectedJobMapLinks.apple} target="_blank" rel="noreferrer">Apple Maps</a>
+                              <span>|</span>
+                              <a href={selectedJobMapLinks.google} target="_blank" rel="noreferrer">Google Maps</a>
+                            </p>
+                          </div>
+                        ) : null}
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Created</span>
+                          <p className="job-summary-value">{formatDateTime(selectedJob.created_at)}</p>
+                        </div>
+                        <div className="job-summary-item">
+                          <span className="job-summary-label">Updated</span>
+                          <p className="job-summary-value">{formatDateTime(selectedJob.updated_at)}</p>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {canManageJobs && employeeAssignNotice.message ? (
@@ -6722,7 +6752,7 @@ export default function App() {
                     </p>
                   ) : null}
 
-                  {selectedJobPhaseJobs.length > 1 ? (
+                  {!isEmployeeDetailsSimpleView && selectedJobPhaseJobs.length > 1 ? (
                     <div className="phase-chain-panel">
                       <div className="phase-chain-head">
                         <h4>Phase Chain</h4>
@@ -6782,27 +6812,29 @@ export default function App() {
                     </div>
                   ) : null}
 
-                  <div className="notes-display-block">
-                    <div className="notes-display-head">
-                      <strong>Notes</strong>
-                      <span>{selectedJobNoteEntries.length}</span>
+                  {!isEmployeeDetailsSimpleView ? (
+                    <div className="notes-display-block">
+                      <div className="notes-display-head">
+                        <strong>Notes</strong>
+                        <span>{selectedJobNoteEntries.length}</span>
+                      </div>
+                      {selectedJobNoteEntries.length === 0 ? (
+                        <p className="notes-display-empty">No notes yet.</p>
+                      ) : (
+                        <ul className="notes-display-list">
+                          {selectedJobNoteEntriesNewestFirst.map((entry) => (
+                            <li key={entry.id}>
+                              <p className="notes-display-meta">
+                                {entry.author || "Update"}
+                                {entry.timestamp ? ` | ${entry.timestamp}` : ""}
+                              </p>
+                              <p className="notes-display-text">{entry.text}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    {selectedJobNoteEntries.length === 0 ? (
-                      <p className="notes-display-empty">No notes yet.</p>
-                    ) : (
-                      <ul className="notes-display-list">
-                        {selectedJobNoteEntriesNewestFirst.map((entry) => (
-                          <li key={entry.id}>
-                            <p className="notes-display-meta">
-                              {entry.author || "Update"}
-                              {entry.timestamp ? ` | ${entry.timestamp}` : ""}
-                            </p>
-                            <p className="notes-display-text">{entry.text}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  ) : null}
 
                   {canManageJobs && String(selectedJob.status || "").toLowerCase() === "completed" ? (
                     <div className="next-phase-panel">
@@ -6896,7 +6928,7 @@ export default function App() {
                     </div>
                   ) : null}
 
-                  {appRole === "employee" ? (
+                  {appRole === "employee" && !isEmployeeDetailsSimpleView ? (
                     <div className="employee-job-note-panel">
                       <h4>Job Notes</h4>
                       <textarea
@@ -6957,124 +6989,128 @@ export default function App() {
                     </div>
                   ) : null}
 
-                  <div className="documents-panel">
-                    <h4>Necessary Documents</h4>
-                    {canUploadDocuments ? (
-                      <label className="pdf-upload-control">
-                        <span>
-                          {uploadingPdf
-                            ? "Uploading..."
-                            : appRole === "employee"
-                              ? "Upload Picture"
-                              : "Upload File"}
-                        </span>
-                        <input
-                          type="file"
-                          accept={appRole === "employee" ? "image/*" : "application/pdf,image/*"}
-                          onChange={uploadPdfForJob}
-                          disabled={uploadingPdf}
-                        />
-                      </label>
-                    ) : null}
+                  {!isEmployeeDetailsSimpleView ? (
+                    <>
+                      <div className="documents-panel">
+                        <h4>Necessary Documents</h4>
+                        {canUploadDocuments ? (
+                          <label className="pdf-upload-control">
+                            <span>
+                              {uploadingPdf
+                                ? "Uploading..."
+                                : appRole === "employee"
+                                  ? "Upload Picture"
+                                  : "Upload File"}
+                            </span>
+                            <input
+                              type="file"
+                              accept={appRole === "employee" ? "image/*" : "application/pdf,image/*"}
+                              onChange={uploadPdfForJob}
+                              disabled={uploadingPdf}
+                            />
+                          </label>
+                        ) : null}
 
-                    {docsNotice.message ? (
-                      <p
-                        className={`notice-text ${
-                          docsNotice.type === "error" ? "notice-text--error" : "notice-text--success"
-                        }`}
-                      >
-                        {docsNotice.message}
-                      </p>
-                    ) : null}
+                        {docsNotice.message ? (
+                          <p
+                            className={`notice-text ${
+                              docsNotice.type === "error" ? "notice-text--error" : "notice-text--success"
+                            }`}
+                          >
+                            {docsNotice.message}
+                          </p>
+                        ) : null}
 
-                    {docsLoading ? <p>Loading documents...</p> : null}
+                        {docsLoading ? <p>Loading documents...</p> : null}
 
-                    {!docsLoading && documents.length === 0 ? (
-                      <p className="empty-text">No documents uploaded yet.</p>
-                    ) : null}
+                        {!docsLoading && documents.length === 0 ? (
+                          <p className="empty-text">No documents uploaded yet.</p>
+                        ) : null}
 
-                    {!docsLoading && documents.length > 0 ? (
-                      <ul className="documents-list">
-                        {documents.map((document) => (
-                          <li key={document.id}>
-                            <span>{document.file_name || "PDF Document"}</span>
-                            {canManageJobs ? (
-                              <div className="document-actions">
-                                <button
-                                  className="ghost-btn"
-                                  onClick={() => openDocument(document.storage_path)}
-                                  type="button"
-                                  disabled={documentActionId === document.id || replacingDocumentId === document.id}
-                                >
-                                  Open
-                                </button>
+                        {!docsLoading && documents.length > 0 ? (
+                          <ul className="documents-list">
+                            {documents.map((document) => (
+                              <li key={document.id}>
+                                <span>{document.file_name || "PDF Document"}</span>
+                                {canManageJobs ? (
+                                  <div className="document-actions">
+                                    <button
+                                      className="ghost-btn"
+                                      onClick={() => openDocument(document.storage_path)}
+                                      type="button"
+                                      disabled={documentActionId === document.id || replacingDocumentId === document.id}
+                                    >
+                                      Open
+                                    </button>
 
-                                <label className="pdf-upload-control pdf-upload-control--inline">
-                                  <span>
-                                    {replacingDocumentId === document.id ? "Replacing..." : "Replace"}
-                                  </span>
-                                  <input
-                                    type="file"
-                                    accept="application/pdf,image/*"
-                                    disabled={
-                                      documentActionId === document.id ||
-                                      replacingDocumentId === document.id
-                                    }
-                                    onChange={(event) => {
-                                      const file = event.target.files?.[0]
-                                      replaceDocument(document, file)
-                                      event.target.value = ""
-                                    }}
-                                  />
-                                </label>
+                                    <label className="pdf-upload-control pdf-upload-control--inline">
+                                      <span>
+                                        {replacingDocumentId === document.id ? "Replacing..." : "Replace"}
+                                      </span>
+                                      <input
+                                        type="file"
+                                        accept="application/pdf,image/*"
+                                        disabled={
+                                          documentActionId === document.id ||
+                                          replacingDocumentId === document.id
+                                        }
+                                        onChange={(event) => {
+                                          const file = event.target.files?.[0]
+                                          replaceDocument(document, file)
+                                          event.target.value = ""
+                                        }}
+                                      />
+                                    </label>
 
-                                <button
-                                  className="ghost-btn"
-                                  onClick={() => removeDocument(document)}
-                                  type="button"
-                                  disabled={documentActionId === document.id || replacingDocumentId === document.id}
-                                >
-                                  {documentActionId === document.id ? "Removing..." : "Remove"}
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                className="ghost-btn"
-                                onClick={() => openDocument(document.storage_path)}
-                                type="button"
-                              >
-                                Open
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
+                                    <button
+                                      className="ghost-btn"
+                                      onClick={() => removeDocument(document)}
+                                      type="button"
+                                      disabled={documentActionId === document.id || replacingDocumentId === document.id}
+                                    >
+                                      {documentActionId === document.id ? "Removing..." : "Remove"}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="ghost-btn"
+                                    onClick={() => openDocument(document.storage_path)}
+                                    type="button"
+                                  >
+                                    Open
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
 
-                  <div className="events-panel">
-                    <h4>Job History Timeline</h4>
+                      <div className="events-panel">
+                        <h4>Job History Timeline</h4>
 
-                    {eventsLoading ? <p>Loading timeline...</p> : null}
+                        {eventsLoading ? <p>Loading timeline...</p> : null}
 
-                    {!eventsLoading && jobEvents.length === 0 ? (
-                      <p className="empty-text">No timeline events yet.</p>
-                    ) : null}
+                        {!eventsLoading && jobEvents.length === 0 ? (
+                          <p className="empty-text">No timeline events yet.</p>
+                        ) : null}
 
-                    {!eventsLoading && jobEvents.length > 0 ? (
-                      <ul className="events-list">
-                        {jobEvents.map((event) => (
-                          <li key={event.id}>
-                            <p className="events-list-title">{formatEventLabel(event)}</p>
-                            <p className="events-list-meta">
-                              {formatDateTime(event.created_at)}
-                              {event.actor_name ? ` - ${event.actor_name}` : ""}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
+                        {!eventsLoading && jobEvents.length > 0 ? (
+                          <ul className="events-list">
+                            {jobEvents.map((event) => (
+                              <li key={event.id}>
+                                <p className="events-list-title">{formatEventLabel(event)}</p>
+                                <p className="events-list-meta">
+                                  {formatDateTime(event.created_at)}
+                                  {event.actor_name ? ` - ${event.actor_name}` : ""}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               )}
             </section>
