@@ -109,6 +109,8 @@ export default function App() {
   const [dispatchSavingJobId, setDispatchSavingJobId] = useState("")
   const [dispatchNotice, setDispatchNotice] = useState({ type: "", message: "" })
   const [completedSearch, setCompletedSearch] = useState("")
+  const [completedExportingJobId, setCompletedExportingJobId] = useState("")
+  const [completedExportNotice, setCompletedExportNotice] = useState({ type: "", message: "" })
   const [billingStartDate, setBillingStartDate] = useState("")
   const [billingEndDate, setBillingEndDate] = useState("")
   const [expandedBillingEmployee, setExpandedBillingEmployee] = useState("")
@@ -886,6 +888,15 @@ export default function App() {
     }
 
     return parsed.toLocaleString()
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;")
   }
 
   function formatEventLabel(event) {
@@ -3145,6 +3156,155 @@ export default function App() {
     }
 
     window.open(data.signedUrl, "_blank", "noopener,noreferrer")
+  }
+
+  async function exportCompletedWorkOrderPdf(job) {
+    if (!job?.id) return
+
+    setCompletedExportingJobId(job.id)
+    setCompletedExportNotice({ type: "", message: "" })
+
+    const [documentsResult, eventsResult] = await Promise.all([
+      supabase
+        .from("work_order_documents")
+        .select("file_name, mime_type, created_at")
+        .eq("work_order_id", job.id)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from(WORK_ORDER_EVENTS_TABLE)
+        .select("event_type, event_label, actor_name, created_at, metadata")
+        .eq("work_order_id", job.id)
+        .order("created_at", { ascending: true })
+    ])
+
+    const documentRows = documentsResult.data || []
+    const eventRows = eventsResult.data || []
+    const noteEntries = parseUserNoteEntries(job.notes)
+    const phaseInfo = getJobPhaseInfo(job)
+
+    if (documentsResult.error || eventsResult.error) {
+      setCompletedExportNotice({
+        type: "error",
+        message: `Some sections could not be loaded: ${documentsResult.error?.message || eventsResult.error?.message || "Unknown error"}`
+      })
+    }
+
+    const mapLinks = buildMapLinks(job.location)
+
+    const notesHtml =
+      noteEntries.length > 0
+        ? noteEntries
+            .map(
+              (entry) =>
+                `<li><strong>${escapeHtml(entry.author || "Update")}</strong>${
+                  entry.timestamp ? ` (${escapeHtml(entry.timestamp)})` : ""
+                }: ${escapeHtml(entry.text)}</li>`
+            )
+            .join("")
+        : "<li>No notes recorded.</li>"
+
+    const timelineHtml =
+      eventRows.length > 0
+        ? eventRows
+            .map(
+              (event) =>
+                `<li><strong>${escapeHtml(formatEventLabel(event))}</strong> - ${escapeHtml(formatDateTime(event.created_at))}${
+                  event.actor_name ? ` | ${escapeHtml(event.actor_name)}` : ""
+                }</li>`
+            )
+            .join("")
+        : "<li>No timeline events recorded.</li>"
+
+    const documentsHtml =
+      documentRows.length > 0
+        ? documentRows
+            .map(
+              (document) =>
+                `<li>${escapeHtml(document.file_name || "Document")} (${escapeHtml(document.mime_type || "Unknown type")}) - ${escapeHtml(formatDateTime(document.created_at))}</li>`
+            )
+            .join("")
+        : "<li>No documents attached.</li>"
+
+    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(job.title || "Completed Work Order")}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #1e293b; }
+      h1 { margin: 0 0 12px; }
+      h2 { margin: 20px 0 8px; font-size: 18px; }
+      p { margin: 4px 0; }
+      ul { margin: 8px 0 0 20px; }
+      .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+      .label { font-weight: bold; }
+      .link-row a { margin-right: 10px; }
+      @media print { body { margin: 14mm; } }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(job.title || "Completed Work Order")}</h1>
+    <p>Generated: ${escapeHtml(new Date().toLocaleString())}</p>
+
+    <h2>Summary</h2>
+    <div class="meta">
+      <p><span class="label">Job #:</span> ${escapeHtml(job.job_number || "Not set")}</p>
+      <p><span class="label">Status:</span> ${escapeHtml(job.status || "Not set")}</p>
+      <p><span class="label">Assigned To:</span> ${escapeHtml(formatAssignees(job.assigned_to))}</p>
+      <p><span class="label">Scheduled Date:</span> ${escapeHtml(formatScheduledDate(job.scheduled_date))}</p>
+      <p><span class="label">Phase:</span> ${escapeHtml(String(phaseInfo.currentPhase || 1))}</p>
+      <p><span class="label">Created:</span> ${escapeHtml(formatDateTime(job.created_at))}</p>
+      <p><span class="label">Updated:</span> ${escapeHtml(formatDateTime(job.updated_at))}</p>
+      <p><span class="label">Billable Hours:</span> ${escapeHtml((getElapsedSeconds(job, clockNow) / 3600).toFixed(2))}</p>
+    </div>
+
+    <h2>Description</h2>
+    <p>${escapeHtml(job.job_description || "None")}</p>
+
+    <h2>Location</h2>
+    <p>${escapeHtml(job.location || "Not set")}</p>
+    ${
+      mapLinks
+        ? `<p class="link-row"><a href="${escapeHtml(mapLinks.apple)}">Apple Maps</a><a href="${escapeHtml(mapLinks.google)}">Google Maps</a></p>`
+        : ""
+    }
+
+    <h2>Notes</h2>
+    <ul>${notesHtml}</ul>
+
+    <h2>Timeline</h2>
+    <ul>${timelineHtml}</ul>
+
+    <h2>Documents</h2>
+    <ul>${documentsHtml}</ul>
+
+    <script>
+      window.onload = () => {
+        window.print();
+      };
+    </script>
+  </body>
+</html>`
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer")
+    if (!printWindow) {
+      setCompletedExportNotice({
+        type: "error",
+        message: "Popup blocked. Allow popups to download PDF exports."
+      })
+      setCompletedExportingJobId("")
+      return
+    }
+
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
+
+    setCompletedExportNotice({
+      type: "success",
+      message: "Export ready. In the print dialog choose Save as PDF."
+    })
+    setCompletedExportingJobId("")
   }
 
   async function uploadFilesForJob(workOrderId, files) {
@@ -6468,6 +6628,16 @@ export default function App() {
               />
             </div>
 
+            {completedExportNotice.message ? (
+              <p
+                className={`notice-text ${
+                  completedExportNotice.type === "error" ? "notice-text--error" : "notice-text--success"
+                }`}
+              >
+                {completedExportNotice.message}
+              </p>
+            ) : null}
+
             {filteredCompletedJobs.length === 0 ? (
               <p className="empty-text">No completed work orders found.</p>
             ) : (
@@ -6493,6 +6663,19 @@ export default function App() {
                     <p>Assigned to: {formatAssignees(job.assigned_to)}</p>
                     <p>Scheduled date: {formatScheduledDate(job.scheduled_date)}</p>
                     <p>Phase: {phaseInfo.currentPhase}</p>
+                    <div className="employee-manage-actions">
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        disabled={completedExportingJobId === job.id}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          exportCompletedWorkOrderPdf(job)
+                        }}
+                      >
+                        {completedExportingJobId === job.id ? "Preparing PDF..." : "Download PDF"}
+                      </button>
+                    </div>
                     <p className="open-hint">Click to open work order</p>
                   </article>
                     )
