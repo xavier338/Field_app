@@ -152,6 +152,7 @@ export default function App() {
   const [showEmployeeNotifications, setShowEmployeeNotifications] = useState(false)
   const [openedEmployeeNotificationIds, setOpenedEmployeeNotificationIds] = useState([])
   const [lastViewedEmployeeNotificationAt, setLastViewedEmployeeNotificationAt] = useState("")
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState("default")
   const [timeOffActionId, setTimeOffActionId] = useState("")
   const [openingDoctorNoteId, setOpeningDoctorNoteId] = useState("")
   const [approvedTimeOffRequests, setApprovedTimeOffRequests] = useState([])
@@ -222,6 +223,8 @@ export default function App() {
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountNotice, setAccountNotice] = useState({ type: "", message: "" })
   const voiceRecognitionRef = useRef(null)
+  const browserNotifiedIdsRef = useRef(new Set())
+  const browserNotificationsReadyRef = useRef(false)
   const [editForm, setEditForm] = useState({
     title: "",
     job_description: "",
@@ -413,6 +416,20 @@ export default function App() {
     const employeeKey = `${NOTIFICATION_READ_STORAGE_PREFIX}:employee:${signedInEmail}`
     window.localStorage.setItem(employeeKey, JSON.stringify(openedEmployeeNotificationIds))
   }, [session?.user?.id, session?.user?.email, openedEmployeeNotificationIds])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setBrowserNotificationPermission("unsupported")
+      return
+    }
+
+    setBrowserNotificationPermission(Notification.permission)
+  }, [session?.user?.id])
+
+  useEffect(() => {
+    browserNotifiedIdsRef.current = new Set()
+    browserNotificationsReadyRef.current = false
+  }, [session?.user?.id])
 
   useEffect(() => {
     const signedInEmail = normalizeEmployeeEmail(session?.user?.email)
@@ -2239,6 +2256,21 @@ export default function App() {
     if (newest) {
       setLastViewedEmployeeNotificationAt(newest)
     }
+  }
+
+  async function requestBrowserNotificationPermission() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setBrowserNotificationPermission("unsupported")
+      return
+    }
+
+    if (Notification.permission === "granted") {
+      setBrowserNotificationPermission("granted")
+      return
+    }
+
+    const permission = await Notification.requestPermission()
+    setBrowserNotificationPermission(permission)
   }
 
   async function loadApprovedTimeOffRequests() {
@@ -4566,6 +4598,75 @@ export default function App() {
 
   const employeeNotificationUnreadCount =
     appRole === "employee" ? employeeUnreadNotifications.length : 0
+  const browserNotificationsSupported =
+    typeof window !== "undefined" && "Notification" in window
+
+  useEffect(() => {
+    if (!session?.user?.id) return
+    if (browserNotificationPermission !== "granted") return
+
+    const sourceEvents =
+      appRole === "admin"
+        ? adminUnreadNotifications
+        : appRole === "employee"
+          ? employeeUnreadNotifications
+          : []
+
+    if (!Array.isArray(sourceEvents)) return
+
+    if (!browserNotificationsReadyRef.current) {
+      sourceEvents.forEach((event) => {
+        const eventId = String(event?.id || "")
+        if (eventId) {
+          browserNotifiedIdsRef.current.add(eventId)
+        }
+      })
+      browserNotificationsReadyRef.current = true
+      return
+    }
+
+    sourceEvents.forEach((event) => {
+      const eventId = String(event?.id || "")
+      if (!eventId || browserNotifiedIdsRef.current.has(eventId)) {
+        return
+      }
+
+      browserNotifiedIdsRef.current.add(eventId)
+
+      const relatedJob = jobs.find((job) => job.id === event.work_order_id)
+      const title = appRole === "admin" ? "Admin notification" : "New assignment"
+      const body =
+        appRole === "admin"
+          ? `${formatEventLabel(event)}${relatedJob?.title ? ` | ${relatedJob.title}` : ""}`
+          : `${relatedJob?.title || "Assigned work order"}${relatedJob?.status ? ` | ${relatedJob.status}` : ""}`
+
+      const browserNotification = new Notification(title, {
+        body,
+        tag: `field-app-notification-${eventId}`
+      })
+
+      browserNotification.onclick = () => {
+        try {
+          window.focus()
+        } catch {
+          // no-op
+        }
+
+        if (event.work_order_id) {
+          openJobDetails(event.work_order_id)
+        }
+
+        browserNotification.close()
+      }
+    })
+  }, [
+    session?.user?.id,
+    appRole,
+    browserNotificationPermission,
+    adminUnreadNotifications,
+    employeeUnreadNotifications,
+    jobs
+  ])
 
   return (
     <div className="app-shell">
@@ -4660,6 +4761,18 @@ export default function App() {
                   <div className="admin-notifications-head">
                     <h3>Admin Notifications</h3>
                     <div className="employee-manage-actions">
+                      {browserNotificationsSupported && browserNotificationPermission !== "granted" ? (
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={requestBrowserNotificationPermission}
+                          disabled={browserNotificationPermission === "denied"}
+                        >
+                          {browserNotificationPermission === "denied"
+                            ? "Alerts blocked"
+                            : "Enable alerts"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="ghost-btn"
@@ -4773,6 +4886,18 @@ export default function App() {
                   <div className="admin-notifications-head">
                     <h3>My Assignments</h3>
                     <div className="employee-manage-actions">
+                      {browserNotificationsSupported && browserNotificationPermission !== "granted" ? (
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={requestBrowserNotificationPermission}
+                          disabled={browserNotificationPermission === "denied"}
+                        >
+                          {browserNotificationPermission === "denied"
+                            ? "Alerts blocked"
+                            : "Enable alerts"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="ghost-btn"
