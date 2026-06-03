@@ -1005,6 +1005,17 @@ export default function App() {
       return { email: normalizeEmployeeEmail(localMatch.email), source: "username_local" }
     }
 
+    const rpcLookup = await supabase.rpc("lookup_login_email_by_username", {
+      input_username: targetUsername
+    })
+
+    if (!rpcLookup.error && rpcLookup.data) {
+      const rpcEmail = normalizeEmployeeEmail(String(rpcLookup.data || ""))
+      if (rpcEmail && isValidEmail(rpcEmail)) {
+        return { email: rpcEmail, source: "username_rpc" }
+      }
+    }
+
     const { data, error } = await supabase
       .from("employees")
       .select("email, name")
