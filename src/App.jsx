@@ -2213,6 +2213,33 @@ export default function App() {
       return next
     })
   }
+  function markAllAdminNotificationsAsRead(sourceEvents = adminNotifications) {
+    const allIds = (sourceEvents || []).map((event) => String(event?.id || "")).filter(Boolean)
+    if (allIds.length === 0) return
+
+    setOpenedAdminNotificationIds((current) =>
+      Array.from(new Set([...current, ...allIds]))
+    )
+
+    const newest = sourceEvents[0]?.created_at
+    if (newest) {
+      setLastViewedNotificationAt(newest)
+    }
+  }
+
+  function markAllEmployeeNotificationsAsRead(sourceEvents = []) {
+    const allIds = (sourceEvents || []).map((event) => String(event?.id || "")).filter(Boolean)
+    if (allIds.length === 0) return
+
+    setOpenedEmployeeNotificationIds((current) =>
+      Array.from(new Set([...current, ...allIds]))
+    )
+
+    const newest = sourceEvents[0]?.created_at
+    if (newest) {
+      setLastViewedEmployeeNotificationAt(newest)
+    }
+  }
 
   async function loadApprovedTimeOffRequests() {
     const { data, error } = await supabase
@@ -4632,14 +4659,24 @@ export default function App() {
                 <div className="notification-popover">
                   <div className="admin-notifications-head">
                     <h3>Admin Notifications</h3>
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={loadAdminNotifications}
-                      disabled={adminNotificationsLoading}
-                    >
-                      {adminNotificationsLoading ? "Refreshing..." : "Refresh"}
-                    </button>
+                    <div className="employee-manage-actions">
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => markAllAdminNotificationsAsRead(adminNotifications)}
+                        disabled={adminUnreadNotifications.length === 0}
+                      >
+                        Mark all read
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={loadAdminNotifications}
+                        disabled={adminNotificationsLoading}
+                      >
+                        {adminNotificationsLoading ? "Refreshing..." : "Refresh"}
+                      </button>
+                    </div>
                   </div>
 
                   {adminNotificationsNotice.message ? (
@@ -4735,13 +4772,23 @@ export default function App() {
                 <div className="notification-popover">
                   <div className="admin-notifications-head">
                     <h3>My Assignments</h3>
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={loadJobs}
-                    >
-                      Refresh
-                    </button>
+                    <div className="employee-manage-actions">
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => markAllEmployeeNotificationsAsRead(employeeAssignmentNotifications)}
+                        disabled={employeeUnreadNotifications.length === 0}
+                      >
+                        Mark all read
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={loadJobs}
+                      >
+                        Refresh
+                      </button>
+                    </div>
                   </div>
 
                   {employeeUnreadNotifications.length === 0 ? (
@@ -4801,14 +4848,24 @@ export default function App() {
           <section className="notification-modal" onClick={(e) => e.stopPropagation()}>
             <div className="admin-notifications-head">
               <h3>All Notifications</h3>
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={loadAllAdminNotifications}
-                disabled={adminNotificationHistoryLoading}
-              >
-                {adminNotificationHistoryLoading ? "Refreshing..." : "Refresh"}
-              </button>
+              <div className="employee-manage-actions">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => markAllAdminNotificationsAsRead(adminNotificationHistory)}
+                  disabled={adminNotificationHistory.length === 0}
+                >
+                  Mark all read
+                </button>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={loadAllAdminNotifications}
+                  disabled={adminNotificationHistoryLoading}
+                >
+                  {adminNotificationHistoryLoading ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
             </div>
 
             {adminNotificationsNotice.message ? (
