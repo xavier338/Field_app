@@ -2218,20 +2218,28 @@ export default function App() {
     }
 
     const existingAssignees = parseAssignees(targetJob.assigned_to)
+    const normalizedEmployeeName = normalizeEmployeeName(employeeName)
+    if (!normalizedEmployeeName) {
+      setEmployeeAssignNotice({ type: "error", message: "Employee name is invalid." })
+      return
+    }
 
     const scheduledFor = normalizeDateInput(targetJob.scheduled_date)
-    if (scheduledFor && isEmployeeUnavailableOnDate(employeeName, scheduledFor)) {
+    if (scheduledFor && isEmployeeUnavailableOnDate(normalizedEmployeeName, scheduledFor)) {
       setEmployeeAssignNotice({
         type: "error",
-        message: `${employeeName} is unavailable on ${scheduledFor}.`
+        message: `${normalizedEmployeeName} is unavailable on ${scheduledFor}.`
       })
       return
     }
 
-    if (existingAssignees.includes(employeeName)) {
+    if (
+      existingAssignees.length === 1 &&
+      existingAssignees[0].toLowerCase() === normalizedEmployeeName.toLowerCase()
+    ) {
       setEmployeeAssignNotice({
         type: "error",
-        message: `${employeeName} is already assigned to this work order.`
+        message: `${normalizedEmployeeName} is already assigned to this work order.`
       })
       return
     }
@@ -2239,7 +2247,7 @@ export default function App() {
     setAssigningJobId(jobId)
     setEmployeeAssignNotice({ type: "", message: "" })
 
-    const updatedAssignees = [...existingAssignees, employeeName]
+    const updatedAssignees = [normalizedEmployeeName]
     let appliedAssignees = [...updatedAssignees]
 
     let { error } = await supabase
@@ -2248,7 +2256,7 @@ export default function App() {
       .eq("id", jobId)
 
     if (error && isAssignedToConstraintViolation(error)) {
-      appliedAssignees = [employeeName]
+      appliedAssignees = [normalizedEmployeeName]
 
       const retry = await supabase
         .from("work_orders")
@@ -2267,16 +2275,13 @@ export default function App() {
       await logWorkOrderEvent({
         workOrderId: jobId,
         eventType: "assignees_changed",
-        eventLabel: `${employeeName} assigned to work order`,
+        eventLabel: `${normalizedEmployeeName} assigned to work order`,
         metadata: { to: appliedAssignees.join(", ") }
       })
       await loadJobs()
       setEmployeeAssignNotice({
         type: "success",
-        message:
-          appliedAssignees.length === 1 && updatedAssignees.length > 1
-            ? `${employeeName} has been assigned (single-assignee mode applied).`
-            : `${employeeName} has been assigned successfully.`
+        message: `${normalizedEmployeeName} has been assigned successfully.`
       })
     }
 
@@ -2502,12 +2507,7 @@ export default function App() {
     const normalizedTarget = normalizeEmployeeName(assigneeName)
     if (!normalizedTarget) return
 
-    const nextAssignees = [
-      normalizedTarget,
-      ...existingAssignees.filter(
-        (name) => String(name || "").toLowerCase() !== normalizedTarget.toLowerCase()
-      )
-    ]
+    const nextAssignees = [normalizedTarget]
 
     const previousPrimary = existingAssignees[0] || ""
     if (previousPrimary.toLowerCase() === normalizedTarget.toLowerCase()) {
