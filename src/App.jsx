@@ -432,6 +432,141 @@ export default function App() {
   }, [session?.user?.id])
 
   useEffect(() => {
+    if (!session?.user?.id) return
+    if (browserNotificationPermission !== "granted") return
+
+    const signedInEmailLocal = String(session.user?.email || "").toLowerCase().trim()
+    const currentEmployeeProfileLocal = employees.find(
+      (employee) => String(employee.email || "").toLowerCase().trim() === signedInEmailLocal
+    )
+    const metadataDisplayNameLocal = String(
+      session.user?.user_metadata?.full_name ||
+        session.user?.user_metadata?.display_name ||
+        session.user?.user_metadata?.name ||
+        ""
+    ).trim()
+
+    const appRoleLocal = userRole === "admin" ? "admin" : "employee"
+    const currentEmployeeNameLocal =
+      currentEmployeeProfileLocal?.name || metadataDisplayNameLocal || ""
+
+    const currentEmployeeNameCandidatesLocal = Array.from(
+      new Set([
+        ...getEmployeeNameMatchCandidates(currentEmployeeNameLocal),
+        ...getEmployeeNameMatchCandidates(currentEmployeeProfileLocal?.name),
+        ...getEmployeeNameMatchCandidates(metadataDisplayNameLocal)
+      ])
+    )
+    const currentEmployeeLooseNameCandidatesLocal = Array.from(
+      new Set(
+        currentEmployeeNameCandidatesLocal.map((value) => normalizeLooseName(value)).filter(Boolean)
+      )
+    )
+
+    const isAssignedToCurrentUserLocal = (assignedToValue) => {
+      if (currentEmployeeNameCandidatesLocal.length === 0) return false
+
+      return parseAssignees(assignedToValue).some((name) => {
+        const strictName = normalizeNameForComparison(name)
+        const looseName = normalizeLooseName(name)
+
+        if (currentEmployeeNameCandidatesLocal.includes(strictName)) return true
+        if (currentEmployeeLooseNameCandidatesLocal.includes(looseName)) return true
+
+        return false
+      })
+    }
+
+    const employeeAssignmentNotificationsLocal =
+      appRoleLocal === "employee"
+        ? jobs
+            .filter((job) => isAssignedToCurrentUserLocal(job.assigned_to))
+            .map((job) => ({
+              id: `assign-${job.id}`,
+              work_order_id: job.id,
+              event_label: `Assigned: ${job.title || "Work Order"}`,
+              created_at: job.updated_at || job.created_at || null,
+              metadata: { status: job.status || "Scheduled" }
+            }))
+            .sort(
+              (a, b) =>
+                new Date(b.created_at || 0).getTime() -
+                new Date(a.created_at || 0).getTime()
+            )
+        : []
+
+    const sourceEvents =
+      appRoleLocal === "admin"
+        ? adminNotifications.filter((event) => !openedAdminNotificationIds.includes(event.id))
+        : appRoleLocal === "employee"
+          ? employeeAssignmentNotificationsLocal.filter(
+              (event) => !openedEmployeeNotificationIds.includes(event.id)
+            )
+          : []
+
+    if (!Array.isArray(sourceEvents)) return
+
+    if (!browserNotificationsReadyRef.current) {
+      sourceEvents.forEach((event) => {
+        const eventId = String(event?.id || "")
+        if (eventId) {
+          browserNotifiedIdsRef.current.add(eventId)
+        }
+      })
+      browserNotificationsReadyRef.current = true
+      return
+    }
+
+    sourceEvents.forEach((event) => {
+      const eventId = String(event?.id || "")
+      if (!eventId || browserNotifiedIdsRef.current.has(eventId)) {
+        return
+      }
+
+      browserNotifiedIdsRef.current.add(eventId)
+
+      const relatedJob = jobs.find((job) => job.id === event.work_order_id)
+      const title = appRoleLocal === "admin" ? "Admin notification" : "New assignment"
+      const body =
+        appRoleLocal === "admin"
+          ? `${formatEventLabel(event)}${relatedJob?.title ? ` | ${relatedJob.title}` : ""}`
+          : `${relatedJob?.title || "Assigned work order"}${relatedJob?.status ? ` | ${relatedJob.status}` : ""}`
+
+      const browserNotification = new Notification(title, {
+        body,
+        tag: `field-app-notification-${eventId}`
+      })
+
+      browserNotification.onclick = () => {
+        try {
+          window.focus()
+        } catch {
+          // no-op
+        }
+
+        if (event.work_order_id) {
+          openJobDetails(event.work_order_id)
+        }
+
+        browserNotification.close()
+      }
+    })
+  }, [
+    session?.user?.id,
+    session?.user?.email,
+    session?.user?.user_metadata?.full_name,
+    session?.user?.user_metadata?.display_name,
+    session?.user?.user_metadata?.name,
+    browserNotificationPermission,
+    userRole,
+    employees,
+    jobs,
+    adminNotifications,
+    openedAdminNotificationIds,
+    openedEmployeeNotificationIds
+  ])
+
+  useEffect(() => {
     const signedInEmail = normalizeEmployeeEmail(session?.user?.email)
 
     if (!signedInEmail) {
@@ -4600,73 +4735,6 @@ export default function App() {
     appRole === "employee" ? employeeUnreadNotifications.length : 0
   const browserNotificationsSupported =
     typeof window !== "undefined" && "Notification" in window
-
-  useEffect(() => {
-    if (!session?.user?.id) return
-    if (browserNotificationPermission !== "granted") return
-
-    const sourceEvents =
-      appRole === "admin"
-        ? adminUnreadNotifications
-        : appRole === "employee"
-          ? employeeUnreadNotifications
-          : []
-
-    if (!Array.isArray(sourceEvents)) return
-
-    if (!browserNotificationsReadyRef.current) {
-      sourceEvents.forEach((event) => {
-        const eventId = String(event?.id || "")
-        if (eventId) {
-          browserNotifiedIdsRef.current.add(eventId)
-        }
-      })
-      browserNotificationsReadyRef.current = true
-      return
-    }
-
-    sourceEvents.forEach((event) => {
-      const eventId = String(event?.id || "")
-      if (!eventId || browserNotifiedIdsRef.current.has(eventId)) {
-        return
-      }
-
-      browserNotifiedIdsRef.current.add(eventId)
-
-      const relatedJob = jobs.find((job) => job.id === event.work_order_id)
-      const title = appRole === "admin" ? "Admin notification" : "New assignment"
-      const body =
-        appRole === "admin"
-          ? `${formatEventLabel(event)}${relatedJob?.title ? ` | ${relatedJob.title}` : ""}`
-          : `${relatedJob?.title || "Assigned work order"}${relatedJob?.status ? ` | ${relatedJob.status}` : ""}`
-
-      const browserNotification = new Notification(title, {
-        body,
-        tag: `field-app-notification-${eventId}`
-      })
-
-      browserNotification.onclick = () => {
-        try {
-          window.focus()
-        } catch {
-          // no-op
-        }
-
-        if (event.work_order_id) {
-          openJobDetails(event.work_order_id)
-        }
-
-        browserNotification.close()
-      }
-    })
-  }, [
-    session?.user?.id,
-    appRole,
-    browserNotificationPermission,
-    adminUnreadNotifications,
-    employeeUnreadNotifications,
-    jobs
-  ])
 
   return (
     <div className="app-shell">
