@@ -941,6 +941,18 @@ export default function App() {
       .replace(/\s+/g, " ")
   }
 
+  function normalizeNameForComparison(value) {
+    return normalizeEmployeeName(value).toLowerCase()
+  }
+
+  function getEmployeeNameMatchCandidates(value) {
+    const normalized = normalizeEmployeeName(value)
+    if (!normalized) return []
+
+    const noSuffix = normalized.replace(/\s*\([^)]*\)\s*$/g, "").trim()
+    return Array.from(new Set([normalized, noSuffix].filter(Boolean).map(normalizeNameForComparison)))
+  }
+
   function normalizeEmployeeEmail(value) {
     return String(value || "")
       .trim()
@@ -1793,9 +1805,7 @@ export default function App() {
   function openJobDetails(jobId) {
     if (appRole === "employee") {
       const job = jobs.find((item) => item.id === jobId)
-      const isAssignedToCurrentEmployee = parseAssignees(job?.assigned_to).some(
-        (name) => name.toLowerCase() === currentEmployeeName.toLowerCase()
-      )
+      const isAssignedToCurrentEmployee = isAssignedToCurrentUser(job?.assigned_to)
 
       if (!isAssignedToCurrentEmployee) {
         return
@@ -3865,6 +3875,19 @@ export default function App() {
   const currentEmployeeName = currentEmployeeProfile?.name || metadataDisplayName || ""
   const accountDisplayName = currentEmployeeName || metadataDisplayName || ""
   const accountChipLabel = accountDisplayName || session.user.email
+  const currentEmployeeNameCandidates = Array.from(
+    new Set([
+      ...getEmployeeNameMatchCandidates(currentEmployeeName),
+      ...getEmployeeNameMatchCandidates(currentEmployeeProfile?.name),
+      ...getEmployeeNameMatchCandidates(metadataDisplayName)
+    ])
+  )
+  const isAssignedToCurrentUser = (assignedToValue) => {
+    if (currentEmployeeNameCandidates.length === 0) return false
+    return parseAssignees(assignedToValue)
+      .map((name) => normalizeNameForComparison(name))
+      .some((name) => currentEmployeeNameCandidates.includes(name))
+  }
   const requiresFirstLoginPasswordSetup =
     appRole === "employee" &&
     (session.user?.user_metadata?.needs_password_setup === true ||
@@ -3945,18 +3968,10 @@ export default function App() {
     (job) => String(job.status || "").trim().toLowerCase() !== "completed"
   )
   const visibleJobs = isEmployeeUser
-    ? jobsSortedBySchedule.filter((job) =>
-        parseAssignees(job.assigned_to).some(
-          (name) => name.toLowerCase() === currentEmployeeName.toLowerCase()
-        )
-      )
+    ? jobsSortedBySchedule.filter((job) => isAssignedToCurrentUser(job.assigned_to))
     : jobsSortedBySchedule
   const visibleActiveJobs = isEmployeeUser
-    ? activeJobs.filter((job) =>
-        parseAssignees(job.assigned_to).some(
-          (name) => name.toLowerCase() === currentEmployeeName.toLowerCase()
-        )
-      )
+    ? activeJobs.filter((job) => isAssignedToCurrentUser(job.assigned_to))
     : activeJobs
   const completedJobs = jobsSortedBySchedule.filter(
     (job) => String(job.status || "").trim().toLowerCase() === "completed"
