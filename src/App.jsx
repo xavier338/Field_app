@@ -945,6 +945,12 @@ export default function App() {
     return normalizeEmployeeName(value).toLowerCase()
   }
 
+  function normalizeLooseName(value) {
+    return normalizeEmployeeName(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+  }
+
   function getEmployeeNameMatchCandidates(value) {
     const normalized = normalizeEmployeeName(value)
     if (!normalized) return []
@@ -3975,11 +3981,29 @@ export default function App() {
       ...getEmployeeNameMatchCandidates(metadataDisplayName)
     ])
   )
+  const currentEmployeeLooseNameCandidates = Array.from(
+    new Set(currentEmployeeNameCandidates.map((value) => normalizeLooseName(value)).filter(Boolean))
+  )
   const isAssignedToCurrentUser = (assignedToValue) => {
     if (currentEmployeeNameCandidates.length === 0) return false
-    return parseAssignees(assignedToValue)
-      .map((name) => normalizeNameForComparison(name))
-      .some((name) => currentEmployeeNameCandidates.includes(name))
+    return parseAssignees(assignedToValue).some((name) => {
+      const strictName = normalizeNameForComparison(name)
+      const looseName = normalizeLooseName(name)
+
+      if (currentEmployeeNameCandidates.includes(strictName)) return true
+      if (currentEmployeeLooseNameCandidates.includes(looseName)) return true
+
+      if (!strictName || !looseName) return false
+
+      const strictContains = currentEmployeeNameCandidates.some(
+        (candidate) => strictName.includes(candidate) || candidate.includes(strictName)
+      )
+      if (strictContains) return true
+
+      return currentEmployeeLooseNameCandidates.some(
+        (candidate) => looseName.includes(candidate) || candidate.includes(looseName)
+      )
+    })
   }
   const requiresFirstLoginPasswordSetup =
     appRole === "employee" &&
