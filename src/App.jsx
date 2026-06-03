@@ -78,6 +78,13 @@ export default function App() {
   const [resetPasswordConfirmValue, setResetPasswordConfirmValue] = useState("")
   const [resetPasswordSaving, setResetPasswordSaving] = useState(false)
   const [resetPasswordNotice, setResetPasswordNotice] = useState({ type: "", message: "" })
+  const [firstLoginPasswordValue, setFirstLoginPasswordValue] = useState("")
+  const [firstLoginPasswordConfirmValue, setFirstLoginPasswordConfirmValue] = useState("")
+  const [firstLoginPasswordSaving, setFirstLoginPasswordSaving] = useState(false)
+  const [firstLoginPasswordNotice, setFirstLoginPasswordNotice] = useState({
+    type: "",
+    message: ""
+  })
   const [jobs, setJobs] = useState([])
   const [title, setTitle] = useState("")
   const [jobDescription, setJobDescription] = useState("")
@@ -1034,7 +1041,11 @@ export default function App() {
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        emailRedirectTo: authRedirectUrl
+        emailRedirectTo: authRedirectUrl,
+        shouldCreateUser: true,
+        data: {
+          needs_password_setup: true
+        }
       }
     })
 
@@ -3567,6 +3578,64 @@ export default function App() {
     setResetPasswordSaving(false)
   }
 
+  async function completeFirstLoginPasswordSetup() {
+    if (!session?.user?.id) {
+      setFirstLoginPasswordNotice({
+        type: "error",
+        message: "Session missing. Open your login link again."
+      })
+      return
+    }
+
+    if (firstLoginPasswordValue.length < 8) {
+      setFirstLoginPasswordNotice({
+        type: "error",
+        message: "Password must be at least 8 characters."
+      })
+      return
+    }
+
+    if (firstLoginPasswordValue !== firstLoginPasswordConfirmValue) {
+      setFirstLoginPasswordNotice({ type: "error", message: "Passwords do not match." })
+      return
+    }
+
+    setFirstLoginPasswordSaving(true)
+    setFirstLoginPasswordNotice({ type: "", message: "" })
+
+    const metadata = {
+      ...(session.user?.user_metadata || {}),
+      needs_password_setup: false
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: firstLoginPasswordValue,
+      data: metadata
+    })
+
+    if (error) {
+      setFirstLoginPasswordNotice({
+        type: "error",
+        message: `Could not set password: ${error.message}`
+      })
+      setFirstLoginPasswordSaving(false)
+      return
+    }
+
+    const {
+      data: { session: refreshedSession }
+    } = await supabase.auth.getSession()
+
+    if (refreshedSession) {
+      setSession(refreshedSession)
+    }
+
+    setFirstLoginPasswordValue("")
+    setFirstLoginPasswordConfirmValue("")
+    setFirstLoginPasswordNotice({ type: "success", message: "Password saved. You can continue." })
+    setFirstLoginPasswordSaving(false)
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
@@ -3799,6 +3868,61 @@ export default function App() {
   const currentEmployeeName = currentEmployeeProfile?.name || metadataDisplayName || ""
   const accountDisplayName = currentEmployeeName || metadataDisplayName || ""
   const accountChipLabel = accountDisplayName || session.user.email
+  const requiresFirstLoginPasswordSetup =
+    appRole === "employee" &&
+    (session.user?.user_metadata?.needs_password_setup === true ||
+      String(session.user?.user_metadata?.needs_password_setup || "").toLowerCase() === "true")
+
+  if (requiresFirstLoginPasswordSetup) {
+    return (
+      <div className="app-shell">
+        <main className="auth-card">
+          <h1 className="brand-title">Western Hydro Engineering Work Orders</h1>
+          <h2 className="section-title">Create Your Password</h2>
+
+          <div className="auth-grid">
+            <p className="subtle-text">
+              Your login link worked. Set a password now before using your dashboard.
+            </p>
+
+            <input
+              type="password"
+              placeholder="New password"
+              value={firstLoginPasswordValue}
+              onChange={(e) => setFirstLoginPasswordValue(e.target.value)}
+            />
+
+            <input
+              type="password"
+              placeholder="Confirm new password"
+              value={firstLoginPasswordConfirmValue}
+              onChange={(e) => setFirstLoginPasswordConfirmValue(e.target.value)}
+            />
+
+            <button
+              className="primary-btn"
+              onClick={completeFirstLoginPasswordSetup}
+              disabled={firstLoginPasswordSaving}
+            >
+              {firstLoginPasswordSaving ? "Saving..." : "Save Password"}
+            </button>
+
+            {firstLoginPasswordNotice.message ? (
+              <p
+                className={`notice-text ${
+                  firstLoginPasswordNotice.type === "error"
+                    ? "notice-text--error"
+                    : "notice-text--success"
+                }`}
+              >
+                {firstLoginPasswordNotice.message}
+              </p>
+            ) : null}
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   const compareJobsByScheduledDate = (a, b) => {
     const aDateKey = normalizeDateInput(a?.scheduled_date)
