@@ -67,6 +67,17 @@ export default function App() {
   const [password, setPassword] = useState("")
   const [authError, setAuthError] = useState("")
   const [signingIn, setSigningIn] = useState(false)
+  const [forgotPasswordSending, setForgotPasswordSending] = useState(false)
+  const [forgotPasswordNotice, setForgotPasswordNotice] = useState({ type: "", message: "" })
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(() => {
+    if (typeof window === "undefined") return false
+    const raw = `${window.location.hash || ""} ${window.location.search || ""}`.toLowerCase()
+    return raw.includes("type=recovery")
+  })
+  const [resetPasswordValue, setResetPasswordValue] = useState("")
+  const [resetPasswordConfirmValue, setResetPasswordConfirmValue] = useState("")
+  const [resetPasswordSaving, setResetPasswordSaving] = useState(false)
+  const [resetPasswordNotice, setResetPasswordNotice] = useState({ type: "", message: "" })
   const [jobs, setJobs] = useState([])
   const [title, setTitle] = useState("")
   const [jobDescription, setJobDescription] = useState("")
@@ -235,9 +246,20 @@ export default function App() {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((authEvent, nextSession) => {
       setSession(nextSession)
       setAuthError("")
+
+      if (authEvent === "PASSWORD_RECOVERY") {
+        setPasswordRecoveryMode(true)
+        setResetPasswordNotice({ type: "", message: "" })
+      }
+
+      if (authEvent === "SIGNED_OUT") {
+        setPasswordRecoveryMode(false)
+        setResetPasswordValue("")
+        setResetPasswordConfirmValue("")
+      }
 
       if (nextSession) {
         loadUserRole(nextSession.user.id)
@@ -3451,6 +3473,100 @@ export default function App() {
     setSigningIn(false)
   }
 
+  async function sendPasswordResetLink() {
+    const normalizedEmail = normalizeEmployeeEmail(email)
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+      setForgotPasswordNotice({
+        type: "error",
+        message: "Enter a valid email address first."
+      })
+      return
+    }
+
+    const authRedirectUrl = getAuthRedirectUrl()
+    if (!authRedirectUrl) {
+      setForgotPasswordNotice({
+        type: "error",
+        message:
+          "Password reset link not sent. Configure VITE_AUTH_REDIRECT_URL (or VITE_APP_URL) to your deployed app URL."
+      })
+      return
+    }
+
+    setForgotPasswordSending(true)
+    setForgotPasswordNotice({ type: "", message: "" })
+
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: authRedirectUrl
+    })
+
+    if (error) {
+      setForgotPasswordNotice({
+        type: "error",
+        message: `Could not send reset link: ${error.message}`
+      })
+      setForgotPasswordSending(false)
+      return
+    }
+
+    setForgotPasswordNotice({
+      type: "success",
+      message: `Reset link sent to ${normalizedEmail}. Check inbox/spam.`
+    })
+    setForgotPasswordSending(false)
+  }
+
+  async function completePasswordReset() {
+    if (!session?.user?.id) {
+      setResetPasswordNotice({
+        type: "error",
+        message: "Recovery session missing. Open the reset link again from your email."
+      })
+      return
+    }
+
+    if (resetPasswordValue.length < 8) {
+      setResetPasswordNotice({
+        type: "error",
+        message: "Password must be at least 8 characters."
+      })
+      return
+    }
+
+    if (resetPasswordValue !== resetPasswordConfirmValue) {
+      setResetPasswordNotice({ type: "error", message: "Passwords do not match." })
+      return
+    }
+
+    setResetPasswordSaving(true)
+    setResetPasswordNotice({ type: "", message: "" })
+
+    const { error } = await supabase.auth.updateUser({ password: resetPasswordValue })
+
+    if (error) {
+      setResetPasswordNotice({
+        type: "error",
+        message: `Could not reset password: ${error.message}`
+      })
+      setResetPasswordSaving(false)
+      return
+    }
+
+    const recoveredEmail = session?.user?.email || email
+
+    setResetPasswordNotice({
+      type: "success",
+      message: "Password updated. Sign in with your new password."
+    })
+    setResetPasswordValue("")
+    setResetPasswordConfirmValue("")
+    setPasswordRecoveryMode(false)
+    setEmail(recoveredEmail)
+    setPassword("")
+    await supabase.auth.signOut()
+    setResetPasswordSaving(false)
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
@@ -3537,6 +3653,69 @@ export default function App() {
     )
   }
 
+  if (passwordRecoveryMode) {
+    return (
+      <div className="app-shell">
+        <main className="auth-card">
+          <h1 className="brand-title">Western Hydro Engineering Work Orders</h1>
+          <h2 className="section-title">Reset Password</h2>
+
+          <div className="auth-grid">
+            <p className="subtle-text">Set your new password from the recovery link.</p>
+
+            <input
+              type="password"
+              placeholder="New password"
+              value={resetPasswordValue}
+              onChange={(e) => setResetPasswordValue(e.target.value)}
+            />
+
+            <input
+              type="password"
+              placeholder="Confirm new password"
+              value={resetPasswordConfirmValue}
+              onChange={(e) => setResetPasswordConfirmValue(e.target.value)}
+            />
+
+            <button
+              className="primary-btn"
+              onClick={completePasswordReset}
+              disabled={resetPasswordSaving}
+            >
+              {resetPasswordSaving ? "Saving..." : "Update Password"}
+            </button>
+
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => {
+                setPasswordRecoveryMode(false)
+                setResetPasswordNotice({ type: "", message: "" })
+                setResetPasswordValue("")
+                setResetPasswordConfirmValue("")
+              }}
+              disabled={resetPasswordSaving}
+            >
+              Back To Sign In
+            </button>
+
+            {resetPasswordNotice.message ? (
+              <p
+                className={`notice-text ${
+                  resetPasswordNotice.type === "error"
+                    ? "notice-text--error"
+                    : "notice-text--success"
+                }`}
+              >
+                {resetPasswordNotice.message}
+              </p>
+            ) : null}
+          </div>
+        </main>
+      </div>
+    )
+  }
+
   if (!session) {
     return (
       <div className="app-shell">
@@ -3562,6 +3741,27 @@ export default function App() {
             <button className="primary-btn" onClick={signIn} disabled={signingIn}>
               {signingIn ? "Signing in..." : "Sign In"}
             </button>
+
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={sendPasswordResetLink}
+              disabled={forgotPasswordSending}
+            >
+              {forgotPasswordSending ? "Sending Reset Link..." : "Forgot Password?"}
+            </button>
+
+            {forgotPasswordNotice.message ? (
+              <p
+                className={`notice-text ${
+                  forgotPasswordNotice.type === "error"
+                    ? "notice-text--error"
+                    : "notice-text--success"
+                }`}
+              >
+                {forgotPasswordNotice.message}
+              </p>
+            ) : null}
 
             {authError ? <p className="error-text">{authError}</p> : null}
           </div>
