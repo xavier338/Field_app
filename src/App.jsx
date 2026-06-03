@@ -217,6 +217,7 @@ export default function App() {
   const [sendingEmployeeAuthForId, setSendingEmployeeAuthForId] = useState("")
   const [sendLoginOnCreate, setSendLoginOnCreate] = useState(true)
   const [accountNameInput, setAccountNameInput] = useState("")
+  const [accountPhoneInput, setAccountPhoneInput] = useState("")
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountNotice, setAccountNotice] = useState({ type: "", message: "" })
   const voiceRecognitionRef = useRef(null)
@@ -1932,6 +1933,7 @@ export default function App() {
   function openAccountView() {
     setAccountNotice({ type: "", message: "" })
     setAccountNameInput(accountDisplayName)
+    setAccountPhoneInput(currentEmployeeProfile?.phone || "")
     setViewMode("account")
   }
 
@@ -3751,6 +3753,7 @@ export default function App() {
     if (!session?.user?.id) return
 
     const normalizedName = String(accountNameInput || "").trim()
+    const normalizedPhone = normalizeEmployeePhone(accountPhoneInput)
     if (!normalizedName) {
       setAccountNotice({ type: "error", message: "Please enter your name." })
       return
@@ -3764,7 +3767,10 @@ export default function App() {
     if (currentEmployeeProfile?.id) {
       const { error } = await supabase
         .from("employees")
-        .update({ name: normalizedName })
+        .update({
+          name: normalizedName,
+          phone: normalizedPhone || null
+        })
         .eq("id", currentEmployeeProfile.id)
 
       if (error) {
@@ -3776,7 +3782,8 @@ export default function App() {
       data: {
         full_name: normalizedName,
         display_name: normalizedName,
-        name: normalizedName
+        name: normalizedName,
+        phone: normalizedPhone || null
       }
     })
 
@@ -3808,12 +3815,13 @@ export default function App() {
     }
 
     setAccountNameInput(normalizedName)
+    setAccountPhoneInput(normalizedPhone)
     setAccountNotice({
       type: "success",
       message:
         employeeUpdateError && !authUpdateError
-          ? "Name saved for this account. Employee directory name could not be updated."
-          : "Account name saved."
+          ? "Account details saved. Employee directory phone could not be updated."
+          : "Account details saved."
     })
     setAccountSaving(false)
   }
@@ -6341,6 +6349,9 @@ export default function App() {
                 <strong>Email:</strong> {session.user.email}
               </p>
               <p>
+                <strong>Phone:</strong> {currentEmployeeProfile?.phone || "Not set"}
+              </p>
+              <p>
                 <strong>Access:</strong> {appRole === "admin" ? "Admin" : "Employee"}
               </p>
             </div>
@@ -6354,6 +6365,15 @@ export default function App() {
               />
             </label>
 
+            <label>
+              Phone
+              <input
+                value={accountPhoneInput}
+                onChange={(e) => setAccountPhoneInput(e.target.value)}
+                placeholder="Your phone"
+              />
+            </label>
+
             <div className="account-actions-row">
               <button
                 type="button"
@@ -6361,7 +6381,7 @@ export default function App() {
                 onClick={saveMyAccount}
                 disabled={accountSaving}
               >
-                {accountSaving ? "Saving..." : "Save Name"}
+                {accountSaving ? "Saving..." : "Save Account"}
               </button>
               <button
                 type="button"
@@ -6369,6 +6389,7 @@ export default function App() {
                 onClick={() => {
                   setAccountNotice({ type: "", message: "" })
                   setAccountNameInput(accountDisplayName)
+                  setAccountPhoneInput(currentEmployeeProfile?.phone || "")
                 }}
                 disabled={accountSaving}
               >
