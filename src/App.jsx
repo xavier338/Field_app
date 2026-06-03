@@ -3989,6 +3989,7 @@ export default function App() {
       ...getEmployeeNameMatchCandidates(metadataDisplayName)
     ])
   )
+  const restrictDashboardToAssignedJobs = appRole === "employee"
   const currentEmployeeLooseNameCandidates = Array.from(
     new Set(currentEmployeeNameCandidates.map((value) => normalizeLooseName(value)).filter(Boolean))
   )
@@ -4083,10 +4084,10 @@ export default function App() {
   const activeJobs = jobsSortedBySchedule.filter(
     (job) => String(job.status || "").trim().toLowerCase() !== "completed"
   )
-  const visibleJobs = isEmployeeUser
+  const visibleJobs = restrictDashboardToAssignedJobs
     ? jobsSortedBySchedule.filter((job) => isAssignedToCurrentUser(job.assigned_to))
     : jobsSortedBySchedule
-  const visibleActiveJobs = isEmployeeUser
+  const visibleActiveJobs = restrictDashboardToAssignedJobs
     ? activeJobs.filter((job) => isAssignedToCurrentUser(job.assigned_to))
     : activeJobs
   const completedJobs = jobsSortedBySchedule.filter(
@@ -4143,7 +4144,7 @@ export default function App() {
     return haystack.includes(completedSearchTerm)
   })
 
-  const dashboardTitle = isEmployeeUser
+  const dashboardTitle = restrictDashboardToAssignedJobs
     ? "My Work Orders"
     : dashboardFilter === "scheduled"
       ? "Scheduled Work Orders"
