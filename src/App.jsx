@@ -6647,6 +6647,16 @@ export default function App() {
                           <span className="job-summary-label">Location</span>
                           <p className="job-summary-value">{selectedJob.location || "Not set"}</p>
                         </div>
+                        {selectedJobMapLinks ? (
+                          <div className="job-summary-item job-summary-item--full">
+                            <span className="job-summary-label">Maps</span>
+                            <p className="job-summary-value map-links-row">
+                              <a href={selectedJobMapLinks.apple} target="_blank" rel="noreferrer">Apple Maps</a>
+                              <span>|</span>
+                              <a href={selectedJobMapLinks.google} target="_blank" rel="noreferrer">Google Maps</a>
+                            </p>
+                          </div>
+                        ) : null}
                       </>
                     ) : (
                       <>
@@ -6928,7 +6938,7 @@ export default function App() {
                     </div>
                   ) : null}
 
-                  {appRole === "employee" && !isEmployeeDetailsSimpleView ? (
+                  {appRole === "employee" ? (
                     <div className="employee-job-note-panel">
                       <h4>Job Notes</h4>
                       <textarea
