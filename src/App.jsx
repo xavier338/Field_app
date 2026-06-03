@@ -3993,16 +3993,7 @@ export default function App() {
       if (currentEmployeeNameCandidates.includes(strictName)) return true
       if (currentEmployeeLooseNameCandidates.includes(looseName)) return true
 
-      if (!strictName || !looseName) return false
-
-      const strictContains = currentEmployeeNameCandidates.some(
-        (candidate) => strictName.includes(candidate) || candidate.includes(strictName)
-      )
-      if (strictContains) return true
-
-      return currentEmployeeLooseNameCandidates.some(
-        (candidate) => looseName.includes(candidate) || candidate.includes(looseName)
-      )
+      return false
     })
   }
   const requiresFirstLoginPasswordSetup =
