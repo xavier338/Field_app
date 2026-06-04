@@ -4928,10 +4928,28 @@ export default function App() {
     .filter((employee) => String(employee.name || "").trim())
     .filter((employee) => !isEmployeeUnavailableOnDate(employee.name, mapDate))
     .map((employee) => {
+      const employeeNameCandidates = getEmployeeNameMatchCandidates(employee.name)
+      const employeeLooseNameCandidates = Array.from(
+        new Set(employeeNameCandidates.map((value) => normalizeLooseName(value)).filter(Boolean))
+      )
+      const employeeInitials = getNameInitials(employee.name)
+      const employeeInitialsLoose = normalizeLooseName(employeeInitials)
+
       const scheduledJob = mapDayJobs.find((job) =>
         parseAssignees(job.assigned_to).some(
-          (assignee) =>
-            assignee.toLowerCase() === String(employee.name || "").toLowerCase()
+          (assignee) => {
+            const strictAssignee = normalizeNameForComparison(assignee)
+            const looseAssignee = normalizeLooseName(assignee)
+
+            if (employeeNameCandidates.includes(strictAssignee)) return true
+            if (employeeLooseNameCandidates.includes(looseAssignee)) return true
+            if (employeeInitials && strictAssignee === normalizeNameForComparison(employeeInitials)) {
+              return true
+            }
+            if (employeeInitialsLoose && looseAssignee === employeeInitialsLoose) return true
+
+            return false
+          }
         )
       )
 
