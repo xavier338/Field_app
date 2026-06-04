@@ -4940,11 +4940,42 @@ export default function App() {
     .filter((employee) => !isEmployeeUnavailableOnDate(employee.name, mapDate))
     .map((employee) => {
       const employeeNameCandidates = getEmployeeNameMatchCandidates(employee.name)
-      const employeeLooseNameCandidates = Array.from(
-        new Set(employeeNameCandidates.map((value) => normalizeLooseName(value)).filter(Boolean))
-      )
+      const normalizedEmployeeName = normalizeEmployeeName(employee.name)
+      const employeeNameParts = normalizedEmployeeName.split(/\s+/).filter(Boolean)
+      const employeeFirstName = employeeNameParts[0] || ""
+      const employeeLastName = employeeNameParts[employeeNameParts.length - 1] || ""
       const employeeInitials = getNameInitials(employee.name)
-      const employeeInitialsLoose = normalizeLooseName(employeeInitials)
+      const employeeEmailLocalPart = normalizeEmployeeEmail(employee.email).split("@")[0] || ""
+      const employeeUsernameCandidates = getUsernameCandidatesForEmployee(employee)
+
+      const employeeStrictCandidates = Array.from(
+        new Set(
+          [
+            ...employeeNameCandidates,
+            normalizeNameForComparison(employeeFirstName),
+            normalizeNameForComparison(employeeLastName),
+            normalizeNameForComparison(employeeInitials),
+            normalizeNameForComparison(employeeEmailLocalPart),
+            ...employeeUsernameCandidates.map(normalizeNameForComparison)
+          ].filter(Boolean)
+        )
+      )
+
+      const employeeLooseNameCandidates = Array.from(
+        new Set(
+          [
+            ...employeeStrictCandidates,
+            normalizedEmployeeName,
+            employeeFirstName,
+            employeeLastName,
+            employeeInitials,
+            employeeEmailLocalPart,
+            ...employeeUsernameCandidates
+          ]
+            .map((value) => normalizeLooseName(value))
+            .filter(Boolean)
+        )
+      )
 
       const scheduledJob = mapDayJobs.find((job) =>
         parseAssignees(job.assigned_to).some(
@@ -4952,12 +4983,8 @@ export default function App() {
             const strictAssignee = normalizeNameForComparison(assignee)
             const looseAssignee = normalizeLooseName(assignee)
 
-            if (employeeNameCandidates.includes(strictAssignee)) return true
+            if (employeeStrictCandidates.includes(strictAssignee)) return true
             if (employeeLooseNameCandidates.includes(looseAssignee)) return true
-            if (employeeInitials && strictAssignee === normalizeNameForComparison(employeeInitials)) {
-              return true
-            }
-            if (employeeInitialsLoose && looseAssignee === employeeInitialsLoose) return true
 
             return false
           }
