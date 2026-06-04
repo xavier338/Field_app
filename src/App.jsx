@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react"
+import L from "leaflet"
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet"
 import { supabase } from "./supabaseClient"
 import "./App.css"
+import "leaflet/dist/leaflet.css"
 
 const DOCUMENT_BUCKET = "work-order-documents"
 const WORK_ORDER_EVENTS_TABLE = "work_order_events"
@@ -9,6 +12,7 @@ const TIME_OFF_NOTES_BUCKET = "time-off-notes"
 const ADMIN_NOTIFICATION_EVENT_TYPES = ["employee_note_added", "status_changed"]
 const NOTIFICATION_READ_STORAGE_PREFIX = "field-app:notification-read"
 const EMPLOYEE_ROLE_CACHE_STORAGE_PREFIX = "field-app:employee-role-cache"
+const SHOP_LOCATION = "1213 W Dragoon Rd Cochise AZ 85606"
 const DISPATCH_STATUS_LANES = ["Scheduled", "In Progress", "On Hold", "Paused", "Completed"]
 const JOB_TEMPLATES = [
   {
@@ -56,6 +60,102 @@ const CHECKIN_ACTIONS = {
   ARRIVE_ON_SITE: "Arrive On Site",
   LEAVE_SITE: "Leave Site",
   COMPLETE_JOB: "Complete Job"
+}
+
+function getNameInitials(nameValue) {
+  const parts = String(nameValue || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+
+  return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase()
+}
+
+function dmsToDecimal(degrees, minutes, seconds, hemisphere) {
+  const deg = Number(degrees || 0)
+  const min = Number(minutes || 0)
+  const sec = Number(seconds || 0)
+  let value = deg + min / 60 + sec / 3600
+
+  if (String(hemisphere || "").toUpperCase() === "S" || String(hemisphere || "").toUpperCase() === "W") {
+    value *= -1
+  }
+
+  return value
+}
+
+function parseLocationCoordinates(locationValue) {
+  const raw = String(locationValue || "").trim()
+  if (!raw) return null
+
+  const decimalPair = raw.match(/(-?\d{1,3}(?:\.\d+)?)\s*[,\s]+\s*(-?\d{1,3}(?:\.\d+)?)/)
+  if (decimalPair) {
+    const lat = Number(decimalPair[1])
+    const lng = Number(decimalPair[2])
+
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return { lat, lng }
+    }
+  }
+
+  const dmsMatches = Array.from(
+    raw.matchAll(/(\d{1,3})[^\d]+(\d{1,2})?[^\d]+(\d{1,2}(?:\.\d+)?)?\s*([NSEW])/gi)
+  )
+
+  if (dmsMatches.length >= 2) {
+    const first = dmsMatches[0]
+    const second = dmsMatches[1]
+
+    const firstHemisphere = String(first[4] || "").toUpperCase()
+    const secondHemisphere = String(second[4] || "").toUpperCase()
+
+    if ((firstHemisphere === "N" || firstHemisphere === "S") && (secondHemisphere === "E" || secondHemisphere === "W")) {
+      return {
+        lat: dmsToDecimal(first[1], first[2], first[3], firstHemisphere),
+        lng: dmsToDecimal(second[1], second[2], second[3], secondHemisphere)
+      }
+    }
+  }
+
+  return null
+}
+
+async function geocodeLocation(locationValue) {
+  const query = String(locationValue || "").trim()
+  if (!query) return null
+
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`
+  )
+
+  if (!response.ok) return null
+  const data = await response.json()
+  const result = Array.isArray(data) ? data[0] : null
+  if (!result) return null
+
+  const lat = Number(result.lat)
+  const lng = Number(result.lon)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+  return { lat, lng }
+}
+
+function createTeamMarkerIcon(initials) {
+  const safeInitials = String(initials || "?")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 3)
+    .toUpperCase() || "?"
+
+  return L.divIcon({
+    className: "team-map-initials-icon",
+    html: `<span>${safeInitials}</span>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -14]
+  })
 }
 
 export default function App() {
@@ -108,6 +208,10 @@ export default function App() {
   const [dispatchDraggingJobId, setDispatchDraggingJobId] = useState("")
   const [dispatchSavingJobId, setDispatchSavingJobId] = useState("")
   const [dispatchNotice, setDispatchNotice] = useState({ type: "", message: "" })
+  const [mapDate, setMapDate] = useState(() => getLocalDateKey(new Date()))
+  const [mapCoordinatesByLocation, setMapCoordinatesByLocation] = useState({})
+  const [mapResolving, setMapResolving] = useState(false)
+  const [mapNotice, setMapNotice] = useState({ type: "", message: "" })
   const [completedSearch, setCompletedSearch] = useState("")
   const [completedExportingJobId, setCompletedExportingJobId] = useState("")
   const [completedExportNotice, setCompletedExportNotice] = useState({ type: "", message: "" })
@@ -598,6 +702,80 @@ export default function App() {
     const roleCacheKey = `${EMPLOYEE_ROLE_CACHE_STORAGE_PREFIX}:${signedInEmail}`
     window.localStorage.setItem(roleCacheKey, JSON.stringify(employeeRoleByEmail))
   }, [session?.user?.id, session?.user?.email, employeeRoleByEmail])
+
+  useEffect(() => {
+    if (userRole !== "admin") return
+
+    const jobsForDate = jobs.filter(
+      (job) =>
+        normalizeDateInput(job.scheduled_date) === mapDate &&
+        String(job.status || "").trim().toLowerCase() !== "completed"
+    )
+
+    const unresolvedLocations = new Set()
+    unresolvedLocations.add(SHOP_LOCATION)
+
+    jobsForDate.forEach((job) => {
+      const locationValue = String(job.location || "").trim()
+      if (!locationValue) return
+
+      if (!mapCoordinatesByLocation[locationValue]) {
+        unresolvedLocations.add(locationValue)
+      }
+    })
+
+    const locationsToResolve = Array.from(unresolvedLocations).filter(
+      (locationValue) => !mapCoordinatesByLocation[locationValue]
+    )
+
+    if (locationsToResolve.length === 0) return
+
+    let cancelled = false
+
+    async function resolveLocations() {
+      setMapResolving(true)
+
+      for (const locationValue of locationsToResolve) {
+        const parsed = parseLocationCoordinates(locationValue)
+        if (parsed) {
+          if (!cancelled) {
+            setMapCoordinatesByLocation((current) => ({
+              ...current,
+              [locationValue]: parsed
+            }))
+          }
+          continue
+        }
+
+        try {
+          const geocoded = await geocodeLocation(locationValue)
+          if (!cancelled && geocoded) {
+            setMapCoordinatesByLocation((current) => ({
+              ...current,
+              [locationValue]: geocoded
+            }))
+          }
+        } catch {
+          if (!cancelled) {
+            setMapNotice({
+              type: "error",
+              message: "Some map locations could not be geocoded."
+            })
+          }
+        }
+      }
+
+      if (!cancelled) {
+        setMapResolving(false)
+      }
+    }
+
+    resolveLocations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [jobs, mapDate, mapCoordinatesByLocation, userRole])
 
   async function loadJobs() {
     const { data, error } = await supabase
@@ -2139,6 +2317,11 @@ export default function App() {
     setDispatchBoardMode("status")
     setDispatchNotice({ type: "", message: "" })
     setViewMode("dispatch")
+  }
+
+  function openMapView() {
+    setMapNotice({ type: "", message: "" })
+    setViewMode("map")
   }
 
   function selectCalendarDate(dateKey) {
@@ -4735,6 +4918,68 @@ export default function App() {
   const selectedEmployeeSummary =
     employeeSummaries.find((employee) => employee.id === selectedEmployeeId) || null
 
+  const mapDayJobs = jobsSortedBySchedule.filter(
+    (job) =>
+      normalizeDateInput(job.scheduled_date) === mapDate &&
+      String(job.status || "").trim().toLowerCase() !== "completed"
+  )
+
+  const adminMapEntries = employees
+    .filter((employee) => String(employee.name || "").trim())
+    .filter((employee) => !isEmployeeUnavailableOnDate(employee.name, mapDate))
+    .map((employee) => {
+      const scheduledJob = mapDayJobs.find((job) =>
+        parseAssignees(job.assigned_to).some(
+          (assignee) =>
+            assignee.toLowerCase() === String(employee.name || "").toLowerCase()
+        )
+      )
+
+      if (!scheduledJob) {
+        return {
+          employeeName: employee.name,
+          initials: getNameInitials(employee.name),
+          locationLabel: SHOP_LOCATION,
+          jobTitle: "At shop",
+          status: "Unscheduled",
+          isShop: true
+        }
+      }
+
+      const locationLabel = String(scheduledJob.location || "").trim() || SHOP_LOCATION
+
+      return {
+        employeeName: employee.name,
+        initials: getNameInitials(employee.name),
+        locationLabel,
+        jobTitle: scheduledJob.title || "Work Order",
+        status: scheduledJob.status || "Scheduled",
+        isShop: locationLabel === SHOP_LOCATION,
+        workOrderId: scheduledJob.id
+      }
+    })
+
+  const adminMapMarkers = adminMapEntries
+    .map((entry) => {
+      const coordinates = mapCoordinatesByLocation[entry.locationLabel]
+      if (!coordinates) return null
+
+      return {
+        ...entry,
+        lat: coordinates.lat,
+        lng: coordinates.lng
+      }
+    })
+    .filter(Boolean)
+
+  const adminMapCenter =
+    adminMapMarkers.length > 0
+      ? [
+          adminMapMarkers.reduce((sum, marker) => sum + marker.lat, 0) / adminMapMarkers.length,
+          adminMapMarkers.reduce((sum, marker) => sum + marker.lng, 0) / adminMapMarkers.length
+        ]
+      : [31.8, -109.7]
+
   const assignableEmployeeNames = Array.from(
     new Set(employeeSummaries.map((employee) => employee.name).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b))
@@ -4954,6 +5199,12 @@ export default function App() {
                   onClick={openDispatchView}
                 >
                   Dispatch
+                </button>
+                <button
+                  className={`tab-btn ${effectiveViewMode === "map" ? "tab-btn--active" : ""}`}
+                  onClick={openMapView}
+                >
+                  Map
                 </button>
                 <button
                   className={`tab-btn ${effectiveViewMode === "employees" || effectiveViewMode === "employee-details" ? "tab-btn--active" : ""}`}
@@ -6332,6 +6583,98 @@ export default function App() {
                   </div>
                 )}
               </div>
+            )}
+          </section>
+        </main>
+      ) : effectiveViewMode === "map" ? (
+        <main className="dashboard-main">
+          <section className="jobs-card jobs-card--present">
+            <div className="completed-head">
+              <h2 className="section-title">Daily Team Map</h2>
+              <input
+                className="completed-search"
+                type="date"
+                value={mapDate}
+                onChange={(e) => setMapDate(e.target.value)}
+              />
+            </div>
+
+            <p className="subtle-text">
+              Team members off on this date are hidden. Anyone not scheduled appears at the shop:
+              {` ${SHOP_LOCATION}`}
+            </p>
+
+            {mapNotice.message ? (
+              <p
+                className={`notice-text ${
+                  mapNotice.type === "error" ? "notice-text--error" : "notice-text--success"
+                }`}
+              >
+                {mapNotice.message}
+              </p>
+            ) : null}
+
+            {mapResolving ? <p className="subtle-text">Resolving map locations...</p> : null}
+
+            {adminMapEntries.length === 0 ? (
+              <p className="empty-text">No team members to show for this date.</p>
+            ) : (
+              <>
+                <div className="team-map-wrap">
+                  <MapContainer
+                    key={`team-map-${mapDate}-${adminMapMarkers.length}`}
+                    center={adminMapCenter}
+                    zoom={10}
+                    className="team-map"
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+
+                    {adminMapMarkers.map((marker) => (
+                      <Marker
+                        key={`${marker.employeeName}-${marker.locationLabel}`}
+                        position={[marker.lat, marker.lng]}
+                        icon={createTeamMarkerIcon(marker.initials)}
+                      >
+                        <Popup>
+                          <strong>{marker.employeeName}</strong>
+                          <br />
+                          {marker.jobTitle}
+                          <br />
+                          {marker.status}
+                          <br />
+                          {marker.locationLabel}
+                        </Popup>
+                      </Marker>
+                    ))}
+                  </MapContainer>
+                </div>
+
+                {adminMapMarkers.length < adminMapEntries.length ? (
+                  <p className="subtle-text">
+                    Some locations could not be plotted yet. Add coordinates in the location field
+                    for best map accuracy.
+                  </p>
+                ) : null}
+
+                <div className="jobs-list">
+                  {adminMapEntries.map((entry) => (
+                    <article key={`map-entry-${entry.employeeName}`} className="job-item">
+                      <div className="job-head">
+                        <h3>{entry.employeeName}</h3>
+                        <span className={`status-pill ${entry.isShop ? "status-pill--scheduled" : "status-pill--in-progress"}`}>
+                          {entry.isShop ? "SHOP" : entry.initials}
+                        </span>
+                      </div>
+                      <p>Assignment: {entry.jobTitle}</p>
+                      <p>Status: {entry.status}</p>
+                      <p>Location: {entry.locationLabel}</p>
+                    </article>
+                  ))}
+                </div>
+              </>
             )}
           </section>
         </main>

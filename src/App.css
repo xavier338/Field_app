@@ -1714,6 +1714,38 @@ textarea:focus {
   font-size: 0.82rem;
 }
 
+.team-map-wrap {
+  margin-top: 0.75rem;
+  border: 1px solid #d8e0e8;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.team-map {
+  width: 100%;
+  height: 430px;
+}
+
+.team-map-initials-icon {
+  background: transparent;
+  border: none;
+}
+
+.team-map-initials-icon span {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #d7ab0d;
+  color: #1f2f3f;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 10px rgba(18, 28, 38, 0.25);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .admin-notifications-card {
   border-style: dashed;
 }
@@ -2192,6 +2224,10 @@ textarea:focus {
   .calendar-assign-controls {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .team-map {
+    height: 320px;
   }
 
   .admin-panel {
