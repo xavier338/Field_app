@@ -1840,6 +1840,21 @@ textarea:focus {
   font-weight: 700;
 }
 
+.employee-map-chooser {
+  border: 1px solid #d7e0ea;
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.employee-map-chooser p {
+  margin: 0;
+  color: #243343;
+  font-size: 0.9rem;
+}
+
 .employee-checkin-times {
   display: grid;
   gap: 0.25rem;

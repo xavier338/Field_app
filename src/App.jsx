@@ -175,6 +175,7 @@ export default function App() {
     type: "",
     message: ""
   })
+  const [travelMapChoice, setTravelMapChoice] = useState(null)
   const [documents, setDocuments] = useState([])
   const [jobEvents, setJobEvents] = useState([])
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -3148,18 +3149,24 @@ export default function App() {
     await runEmployeeCheckInAction(job, "START_SHIFT")
 
     const mapLinks = buildMapLinks(job.location)
-    if (!mapLinks) return
+    if (!mapLinks) {
+      setEmployeeJobActionNotice({
+        type: "error",
+        message: "No job location found to open maps."
+      })
+      return
+    }
 
-    const selectedApp = window.prompt(
-      "Open directions in Google or Apple Maps? Type G for Google or A for Apple.",
-      "G"
-    )
+    setTravelMapChoice({
+      title: job.title || "Work Order",
+      google: mapLinks.google,
+      apple: mapLinks.apple
+    })
+  }
 
-    if (selectedApp === null) return
-
-    const normalizedSelection = String(selectedApp || "").trim().toLowerCase()
-    const targetUrl = normalizedSelection.startsWith("a") ? mapLinks.apple : mapLinks.google
-    window.open(targetUrl, "_blank", "noopener,noreferrer")
+  function openTravelMapLink(url) {
+    if (!url) return
+    window.open(url, "_blank", "noopener,noreferrer")
   }
 
   async function openDocument(storagePath) {
@@ -7040,6 +7047,38 @@ export default function App() {
                       Complete Job
                     </button>
                   </div>
+
+                  {travelMapChoice ? (
+                    <div className="employee-map-chooser">
+                      <p>
+                        Open directions for <strong>{travelMapChoice.title}</strong>
+                      </p>
+                      <div className="employee-manage-actions">
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          onClick={() => openTravelMapLink(travelMapChoice.google)}
+                        >
+                          Open Google Maps
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => openTravelMapLink(travelMapChoice.apple)}
+                        >
+                          Open Apple Maps
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setTravelMapChoice(null)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="employee-checkin-times">
                     <p><strong>Shift Started:</strong> {formatDateTime(selectedJobCheckInEvents.START_SHIFT)}</p>
                     <p><strong>Arrived On Site:</strong> {formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
