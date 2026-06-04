@@ -727,7 +727,7 @@ export default function App() {
     unresolvedLocations.add(SHOP_LOCATION)
 
     jobsForDate.forEach((job) => {
-      const locationValue = String(job.location || "").trim()
+      const locationValue = getMapLocationLabelForJob(job)
       if (!locationValue) return
 
       if (!mapCoordinatesByLocation[locationValue]) {
@@ -1264,6 +1264,31 @@ export default function App() {
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean)
+  }
+
+  function isLikelyMapLocationLabel(value) {
+    const normalized = String(value || "").trim()
+    if (!normalized) return false
+
+    if (parseLocationCoordinates(normalized)) return true
+    if (/\b(road|rd|street|st|avenue|ave|drive|dr|highway|hwy|boulevard|blvd|lane|ln|way|court|ct)\b/i.test(normalized)) {
+      return true
+    }
+    if (/^[a-z]{1,4}\s*-?\s*\d{1,5}[a-z]?$/i.test(normalized)) return true
+
+    return false
+  }
+
+  function getMapLocationLabelForJob(job) {
+    const explicitLocation = String(job?.location || "").trim()
+    if (explicitLocation) return explicitLocation
+
+    const titleFallback = String(job?.title || "").trim()
+    if (isLikelyMapLocationLabel(titleFallback)) {
+      return titleFallback
+    }
+
+    return ""
   }
 
   function getJobPhaseInfo(job) {
@@ -5085,7 +5110,9 @@ export default function App() {
         }
       }
 
-      const locationLabel = String(scheduledJob.location || "").trim() || SHOP_LOCATION
+      const locationLabel = getMapLocationLabelForJob(scheduledJob) || SHOP_LOCATION
+      const isShopLocation =
+        normalizeLooseName(locationLabel) === normalizeLooseName(SHOP_LOCATION)
 
       return {
         employeeName: employee.name,
@@ -5093,7 +5120,7 @@ export default function App() {
         locationLabel,
         jobTitle: scheduledJob.title || "Work Order",
         status: scheduledJob.status || "Scheduled",
-        isShop: locationLabel === SHOP_LOCATION,
+        isShop: isShopLocation,
         workOrderId: scheduledJob.id
       }
     })
