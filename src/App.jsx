@@ -4977,7 +4977,7 @@ export default function App() {
         )
       )
 
-      const scheduledJob = mapDayJobs.find((job) =>
+      const matchingJobs = mapDayJobs.filter((job) =>
         parseAssignees(job.assigned_to).some(
           (assignee) => {
             const strictAssignee = normalizeNameForComparison(assignee)
@@ -4990,6 +4990,41 @@ export default function App() {
           }
         )
       )
+
+      const scheduledJob = matchingJobs
+        .slice()
+        .sort((a, b) => {
+          const aLocation = String(a?.location || "").trim()
+          const bLocation = String(b?.location || "").trim()
+          const aHasConcreteLocation =
+            Boolean(aLocation) && normalizeLooseName(aLocation) !== normalizeLooseName(SHOP_LOCATION)
+          const bHasConcreteLocation =
+            Boolean(bLocation) && normalizeLooseName(bLocation) !== normalizeLooseName(SHOP_LOCATION)
+
+          if (aHasConcreteLocation !== bHasConcreteLocation) {
+            return bHasConcreteLocation ? 1 : -1
+          }
+
+          const aStatus = String(a?.status || "").trim().toLowerCase()
+          const bStatus = String(b?.status || "").trim().toLowerCase()
+          const statusWeight = {
+            "in progress": 3,
+            paused: 2,
+            scheduled: 1,
+            "on hold": 0
+          }
+          const aStatusWeight = statusWeight[aStatus] ?? 0
+          const bStatusWeight = statusWeight[bStatus] ?? 0
+
+          if (aStatusWeight !== bStatusWeight) {
+            return bStatusWeight - aStatusWeight
+          }
+
+          const aCreated = new Date(a?.created_at || 0).getTime()
+          const bCreated = new Date(b?.created_at || 0).getTime()
+
+          return bCreated - aCreated
+        })[0] || null
 
       if (!scheduledJob) {
         return {
