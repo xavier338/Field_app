@@ -91,13 +91,24 @@ function parseLocationCoordinates(locationValue) {
   const raw = String(locationValue || "").trim()
   if (!raw) return null
 
-  const decimalPair = raw.match(/(-?\d{1,3}(?:\.\d+)?)\s*[,\s]+\s*(-?\d{1,3}(?:\.\d+)?)/)
+  const decimalPair = raw.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/)
   if (decimalPair) {
     const lat = Number(decimalPair[1])
     const lng = Number(decimalPair[2])
 
     if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
       return { lat, lng }
+    }
+  }
+
+  const compactDmsPair = raw.match(
+    /(\d{1,3})\D+(\d{1,2})\D+(\d{1,2}(?:\.\d+)?)\D*([NS])\s*(\d{1,3})\D+(\d{1,2})\D+(\d{1,2}(?:\.\d+)?)\D*([EW])/i
+  )
+
+  if (compactDmsPair) {
+    return {
+      lat: dmsToDecimal(compactDmsPair[1], compactDmsPair[2], compactDmsPair[3], compactDmsPair[4]),
+      lng: dmsToDecimal(compactDmsPair[5], compactDmsPair[6], compactDmsPair[7], compactDmsPair[8])
     }
   }
 
