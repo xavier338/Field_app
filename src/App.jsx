@@ -4935,7 +4935,55 @@ export default function App() {
       String(job.status || "").trim().toLowerCase() !== "completed"
   )
 
-  const adminMapEntries = employees
+  const mapAssigneeNames = Array.from(
+    new Set(
+      mapDayJobs
+        .flatMap((job) => parseAssignees(job.assigned_to))
+        .map((name) => normalizeEmployeeName(name))
+        .filter(Boolean)
+    )
+  )
+
+  const mapPeople = employees
+    .map((employee) => ({
+      ...employee,
+      name: normalizeEmployeeName(employee.name),
+      email: normalizeEmployeeEmail(employee.email)
+    }))
+    .filter((employee) => Boolean(employee.name))
+
+  const knownMapPersonKeys = new Set(
+    mapPeople.map((employee) => normalizeLooseName(employee.name)).filter(Boolean)
+  )
+
+  mapAssigneeNames.forEach((assigneeName) => {
+    const assigneeKey = normalizeLooseName(assigneeName)
+    if (!assigneeKey || knownMapPersonKeys.has(assigneeKey)) return
+
+    mapPeople.push({
+      id: `map-assignee-${assigneeKey}`,
+      name: assigneeName,
+      email: ""
+    })
+    knownMapPersonKeys.add(assigneeKey)
+  })
+
+  if (appRole === "admin") {
+    const signedInMapName = normalizeEmployeeName(currentEmployeeName || metadataDisplayName)
+    const signedInMapEmail = normalizeEmployeeEmail(signedInEmail)
+    const signedInMapKey = normalizeLooseName(signedInMapName)
+
+    if (signedInMapName && signedInMapKey && !knownMapPersonKeys.has(signedInMapKey)) {
+      mapPeople.push({
+        id: `map-admin-${signedInMapKey}`,
+        name: signedInMapName,
+        email: signedInMapEmail
+      })
+      knownMapPersonKeys.add(signedInMapKey)
+    }
+  }
+
+  const adminMapEntries = mapPeople
     .filter((employee) => String(employee.name || "").trim())
     .filter((employee) => !isEmployeeUnavailableOnDate(employee.name, mapDate))
     .map((employee) => {
