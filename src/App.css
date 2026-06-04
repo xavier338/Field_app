@@ -1811,6 +1811,11 @@ textarea:focus {
   gap: 0.55rem;
 }
 
+.employee-checkin-panel--top {
+  margin-top: 0.85rem;
+  border-top: 1px solid #e2e7ec;
+}
+
 .employee-checkin-panel h4 {
   margin: 0;
   color: var(--ink-900);
@@ -1821,6 +1826,18 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
+}
+
+.employee-checkin-actions--top {
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.employee-top-action-btn {
+  width: 100%;
+  min-height: 46px;
+  font-size: 0.98rem;
+  font-weight: 700;
 }
 
 .employee-checkin-times {

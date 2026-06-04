@@ -3142,6 +3142,26 @@ export default function App() {
     setEmployeeJobActionSaving(false)
   }
 
+  async function handleEmployeeTravelToJob(job) {
+    if (!job) return
+
+    await runEmployeeCheckInAction(job, "START_SHIFT")
+
+    const mapLinks = buildMapLinks(job.location)
+    if (!mapLinks) return
+
+    const selectedApp = window.prompt(
+      "Open directions in Google or Apple Maps? Type G for Google or A for Apple.",
+      "G"
+    )
+
+    if (selectedApp === null) return
+
+    const normalizedSelection = String(selectedApp || "").trim().toLowerCase()
+    const targetUrl = normalizedSelection.startsWith("a") ? mapLinks.apple : mapLinks.google
+    window.open(targetUrl, "_blank", "noopener,noreferrer")
+  }
+
   async function openDocument(storagePath) {
     const { data, error } = await supabase.storage
       .from(DOCUMENT_BUCKET)
@@ -6929,7 +6949,7 @@ export default function App() {
                 <p className="timer-heading">Time Tracking</p>
                 <p className="timer-value">{formatDuration(selectedJobElapsedSeconds)}</p>
                 <p className="timer-hours">Billable hours: {selectedJobBillableHours}</p>
-                {canControlTimer ? (
+                {canControlTimer && canManageJobs ? (
                   <div className="timer-actions">
                     {isTimerRunning(selectedJob) ? (
                       <button
@@ -6974,6 +6994,60 @@ export default function App() {
                   </p>
                 ) : null}
               </div>
+
+              {appRole === "employee" ? (
+                <div className="employee-checkin-panel employee-checkin-panel--top">
+                  <h4>Job Actions</h4>
+                  <div className="employee-checkin-actions employee-checkin-actions--top">
+                    <button
+                      type="button"
+                      className="primary-btn employee-top-action-btn"
+                      onClick={() => handleEmployeeTravelToJob(selectedJob)}
+                      disabled={employeeJobActionSaving || timerSaving}
+                    >
+                      Travel To Job
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-btn employee-top-action-btn"
+                      onClick={() => runEmployeeCheckInAction(selectedJob, "ARRIVE_ON_SITE")}
+                      disabled={employeeJobActionSaving}
+                    >
+                      Arrive On Site
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-btn employee-top-action-btn"
+                      onClick={() => pauseTimerForJob(selectedJob)}
+                      disabled={timerSaving}
+                    >
+                      Pause Job
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-btn employee-top-action-btn"
+                      onClick={() => runEmployeeCheckInAction(selectedJob, "LEAVE_SITE")}
+                      disabled={employeeJobActionSaving}
+                    >
+                      Leave Site
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-btn employee-top-action-btn"
+                      onClick={() => runEmployeeCheckInAction(selectedJob, "COMPLETE_JOB")}
+                      disabled={employeeJobActionSaving}
+                    >
+                      Complete Job
+                    </button>
+                  </div>
+                  <div className="employee-checkin-times">
+                    <p><strong>Shift Started:</strong> {formatDateTime(selectedJobCheckInEvents.START_SHIFT)}</p>
+                    <p><strong>Arrived On Site:</strong> {formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
+                    <p><strong>Left Site:</strong> {formatDateTime(selectedJobCheckInEvents.LEAVE_SITE)}</p>
+                    <p><strong>Completed:</strong> {formatDateTime(selectedJobCheckInEvents.COMPLETE_JOB)}</p>
+                  </div>
+                </div>
+              ) : null}
 
               {canManageJobs && editingJobId === selectedJob.id ? (
                 <div className="job-edit-grid">
@@ -7321,53 +7395,6 @@ export default function App() {
                           {nextPhaseNotice.message}
                         </p>
                       ) : null}
-                    </div>
-                  ) : null}
-
-                  {appRole === "employee" ? (
-                    <div className="employee-checkin-panel">
-                      <h4>Check-In Workflow</h4>
-                      <div className="employee-checkin-actions">
-                        <button
-                          type="button"
-                          className="primary-btn"
-                          onClick={() => runEmployeeCheckInAction(selectedJob, "START_SHIFT")}
-                          disabled={employeeJobActionSaving}
-                        >
-                          Start Shift
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => runEmployeeCheckInAction(selectedJob, "ARRIVE_ON_SITE")}
-                          disabled={employeeJobActionSaving}
-                        >
-                          Arrive On Site
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => runEmployeeCheckInAction(selectedJob, "LEAVE_SITE")}
-                          disabled={employeeJobActionSaving}
-                        >
-                          Leave Site
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => runEmployeeCheckInAction(selectedJob, "COMPLETE_JOB")}
-                          disabled={employeeJobActionSaving}
-                        >
-                          Complete Job
-                        </button>
-                      </div>
-
-                      <div className="employee-checkin-times">
-                        <p><strong>Shift Started:</strong> {formatDateTime(selectedJobCheckInEvents.START_SHIFT)}</p>
-                        <p><strong>Arrived On Site:</strong> {formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
-                        <p><strong>Left Site:</strong> {formatDateTime(selectedJobCheckInEvents.LEAVE_SITE)}</p>
-                        <p><strong>Completed:</strong> {formatDateTime(selectedJobCheckInEvents.COMPLETE_JOB)}</p>
-                      </div>
                     </div>
                   ) : null}
 
