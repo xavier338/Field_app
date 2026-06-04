@@ -5137,6 +5137,28 @@ export default function App() {
       }
     })
     .filter(Boolean)
+    .reduce((markers, marker) => {
+      const coordinateKey = `${Number(marker.lat).toFixed(6)},${Number(marker.lng).toFixed(6)}`
+      const overlapIndex = markers.countByCoordinate[coordinateKey] || 0
+      markers.countByCoordinate[coordinateKey] = overlapIndex + 1
+
+      if (overlapIndex === 0) {
+        markers.items.push(marker)
+        return markers
+      }
+
+      const ringStep = Math.floor((overlapIndex - 1) / 6)
+      const angle = (overlapIndex - 1) * (Math.PI / 3)
+      const radius = 0.0012 * (ringStep + 1)
+
+      markers.items.push({
+        ...marker,
+        lat: marker.lat + Math.sin(angle) * radius,
+        lng: marker.lng + Math.cos(angle) * radius
+      })
+
+      return markers
+    }, { items: [], countByCoordinate: {} }).items
 
   const adminMapCenter =
     adminMapMarkers.length > 0
