@@ -3116,6 +3116,54 @@ export default function App() {
     setTimeOffActionId("")
   }
 
+  async function deleteTimeOffRequest(request) {
+    if (appRole !== "admin") return
+
+    const requestId = request?.id
+    if (!requestId) return
+
+    const employeeLabel = request.employee_name || request.employee_email || "this employee"
+    const dateLabel = formatTimeOffRequestDateRange(request)
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(`Remove time-off request for ${employeeLabel} (${dateLabel})?`)
+
+    if (!confirmed) return
+
+    setTimeOffActionId(requestId)
+
+    const details = parseTimeOffReasonDetails(request.reason)
+    if (details.doctorNotePath) {
+      const { error: storageError } = await supabase.storage
+        .from(TIME_OFF_NOTES_BUCKET)
+        .remove([details.doctorNotePath])
+
+      if (storageError) {
+        console.log("DELETE DOCTOR NOTE ERROR:", storageError)
+      }
+    }
+
+    const { error } = await supabase
+      .from(TIME_OFF_REQUESTS_TABLE)
+      .delete()
+      .eq("id", requestId)
+
+    if (error) {
+      setTimeOffNotice({
+        type: "error",
+        message: `Could not remove request: ${error.message}`
+      })
+      setTimeOffActionId("")
+      return
+    }
+
+    await loadAdminTimeOffRequests()
+    await loadApprovedTimeOffRequests()
+    setTimeOffNotice({ type: "success", message: "Time-off request removed." })
+    setTimeOffActionId("")
+  }
+
   async function submitTimeOffRequest() {
     if (appRole !== "employee") return
 
@@ -8068,6 +8116,14 @@ export default function App() {
                                   Deny
                                 </button>
                               ) : null}
+                              <button
+                                className="ghost-btn"
+                                type="button"
+                                onClick={() => deleteTimeOffRequest(request)}
+                                disabled={timeOffActionId === request.id}
+                              >
+                                Remove
+                              </button>
                             </div>
                                 </>
                               )
