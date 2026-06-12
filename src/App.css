@@ -593,6 +593,18 @@
   color: var(--ink-900);
 }
 
+.admin-timeoff-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) minmax(145px, 170px) minmax(145px, 170px) minmax(220px, 1fr) auto;
+  gap: 0.55rem;
+  align-items: end;
+  margin-bottom: 0.6rem;
+}
+
+.admin-timeoff-form select {
+  min-width: 0;
+}
+
 .timeoff-panel-head {
   display: flex;
   justify-content: space-between;
@@ -619,9 +631,29 @@
 
 .timeoff-form {
   display: grid;
-  grid-template-columns: 160px 1fr auto;
-  gap: 0.5rem;
-  align-items: center;
+  grid-template-columns: minmax(145px, 170px) minmax(145px, 170px) minmax(220px, 1fr) auto;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.timeoff-date-field {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-700);
+}
+
+.timeoff-date-field input {
+  width: 100%;
+}
+
+.timeoff-reason-input {
+  min-width: 0;
+}
+
+.timeoff-submit-btn {
+  white-space: nowrap;
 }
 
 .timeoff-upload-control {
@@ -742,8 +774,8 @@
 }
 
 .calendar-day-card--timeoff-approved {
-  border-color: #d94848;
-  background: linear-gradient(160deg, #fff3f3, #fbfcfe);
+  border-color: #c7d0da;
+  background: linear-gradient(160deg, #f3f6f9, #fbfcfe);
 }
 
 .calendar-day-card--timeoff-pending {
@@ -772,6 +804,34 @@
 .calendar-jobs-list {
   display: grid;
   gap: 0.35rem;
+}
+
+.calendar-timeoff-list,
+.calendar-note-list {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.calendar-timeoff-chip,
+.calendar-note-chip {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.24rem 0.42rem;
+  overflow-wrap: anywhere;
+}
+
+.calendar-timeoff-chip {
+  background: #eef2f6;
+  border: 1px solid #d2dae4;
+  color: #4a5563;
+}
+
+.calendar-note-chip {
+  background: #e9f3ff;
+  border: 1px solid #bdd8fb;
+  color: #1f5fa1;
 }
 
 .calendar-job-chip {
@@ -820,6 +880,30 @@
   align-items: stretch;
 }
 
+.calendar-note-editor {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+}
+
+.calendar-day-actions {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.calendar-day-action-btn {
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+  padding: 0.45rem 0.55rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+
 .calendar-day-expand .calendar-assign-controls select,
 .calendar-day-expand .calendar-assign-controls button {
   width: 100%;
@@ -854,6 +938,47 @@
   margin: 0.7rem 0 0.45rem;
   font-size: 0.9rem;
   color: var(--ink-900);
+}
+
+.calendar-unassigned-pool {
+  margin-top: 0.85rem;
+  border-top: 1px solid #e1e6ec;
+  padding-top: 0.8rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.calendar-unassigned-pool-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ink-900);
+}
+
+.calendar-unassigned-pool-head .subtle-text {
+  margin: 0.15rem 0 0;
+}
+
+.calendar-unassigned-pool-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.calendar-unassigned-chip {
+  border: 1px solid #d8e3f0;
+  background: #f4f8fd;
+  color: #2a4b68;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.3rem 0.6rem;
+  cursor: grab;
+  max-width: 100%;
+  text-align: left;
+}
+
+.calendar-unassigned-chip:active {
+  cursor: grabbing;
 }
 
 .calendar-assign-controls {
@@ -975,6 +1100,16 @@ textarea:focus {
 .phase-builder-panel {
   display: grid;
   gap: 0.55rem;
+}
+
+.create-estimate-panel {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.create-estimate-help {
+  margin: 0;
+  font-size: 0.82rem;
 }
 
 .phase-builder-head {
@@ -1343,6 +1478,12 @@ textarea:focus {
   color: #2b4f78;
 }
 
+.status-pill--pending-invoice {
+  background: #fff2e0;
+  border-color: #e7c48f;
+  color: #7a4c0c;
+}
+
 .error-text {
   margin: 0;
   color: #8f1f1f;
@@ -1397,9 +1538,35 @@ textarea:focus {
   color: var(--ink-900);
 }
 
+.job-details-head-timer {
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid #e2e7ec;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #4b5563;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.job-details-head-timer strong {
+  color: #7a5b0e;
+  font-size: 0.92rem;
+}
+
 .job-details-actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.job-details-actions--bottom {
+  margin-top: 0.9rem;
+  justify-content: flex-end;
+  border-top: 1px solid #e2e7ec;
+  padding-top: 0.8rem;
 }
 
 .job-delete-btn {
@@ -1448,6 +1615,50 @@ textarea:focus {
 .job-summary-value {
   margin: 0;
   color: var(--ink-700);
+}
+
+.job-summary-primary-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.job-summary-primary-row .job-summary-value {
+  white-space: nowrap;
+}
+
+.job-summary-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.details-toggle-row {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.details-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.details-toggle-count {
+  min-width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff1c2;
+  color: #785d14;
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .map-links-row {
@@ -1503,6 +1714,14 @@ textarea:focus {
   border-radius: 10px;
   background: #ffffff;
   padding: 0.45rem 0.55rem;
+}
+
+.notes-display-description {
+  border: 1px solid #e1e7ee;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0.45rem 0.55rem;
+  margin-bottom: 0.45rem;
 }
 
 .notes-display-meta {
@@ -1647,6 +1866,22 @@ textarea:focus {
   display: flex;
   gap: 0.45rem;
   margin-top: 0.55rem;
+}
+
+.timer-manual-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+
+.timer-manual-row label {
+  display: grid;
+  gap: 0.28rem;
+  font-size: 0.84rem;
+  color: var(--ink-700);
+  min-width: 220px;
 }
 
 .notice-text {
@@ -2160,6 +2395,11 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .job-summary-primary-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .phase-builder-head {
     flex-direction: column;
     align-items: flex-start;
@@ -2211,6 +2451,16 @@ textarea:focus {
 
   .timeoff-form {
     grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .admin-timeoff-form {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .timeoff-submit-btn {
+    width: 100%;
   }
 
   .calendar-month-label {

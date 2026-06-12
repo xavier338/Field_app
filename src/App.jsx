@@ -9,11 +9,27 @@ const DOCUMENT_BUCKET = "work-order-documents"
 const WORK_ORDER_EVENTS_TABLE = "work_order_events"
 const TIME_OFF_REQUESTS_TABLE = "employee_time_off_requests"
 const TIME_OFF_NOTES_BUCKET = "time-off-notes"
-const ADMIN_NOTIFICATION_EVENT_TYPES = ["employee_note_added", "status_changed"]
+const ADMIN_NOTIFICATION_EVENT_TYPES = [
+  "employee_note_added",
+  "status_changed",
+  "checkin_start_shift",
+  "checkin_arrive_on_site",
+  "checkin_leave_site",
+  "checkin_end_shift",
+  "checkin_complete_job",
+  "time_off_requested"
+]
 const NOTIFICATION_READ_STORAGE_PREFIX = "field-app:notification-read"
 const EMPLOYEE_ROLE_CACHE_STORAGE_PREFIX = "field-app:employee-role-cache"
 const SHOP_LOCATION = "1213 W Dragoon Rd Cochise AZ 85606"
-const DISPATCH_STATUS_LANES = ["Scheduled", "In Progress", "On Hold", "Paused", "Completed"]
+const DISPATCH_STATUS_LANES = [
+  "Scheduled",
+  "In Progress",
+  "On Hold",
+  "Paused",
+  "Work To Invoice",
+  "Completed"
+]
 const JOB_TEMPLATES = [
   {
     id: "video-survey",
@@ -59,7 +75,8 @@ const CHECKIN_ACTIONS = {
   START_SHIFT: "Start Shift",
   ARRIVE_ON_SITE: "Arrive On Site",
   LEAVE_SITE: "Leave Site",
-  COMPLETE_JOB: "Complete Job"
+  END_SHIFT: "Returned To Shop / End Shift",
+  COMPLETE_JOB: "Job Complete/Send To Invoice"
 }
 
 function getNameInitials(nameValue) {
@@ -206,6 +223,8 @@ export default function App() {
   const [location, setLocation] = useState("")
   const [assignedTo, setAssignedTo] = useState([])
   const [scheduledDate, setScheduledDate] = useState("")
+  const [createEstimatedHours, setCreateEstimatedHours] = useState("")
+  const [createJobNumber, setCreateJobNumber] = useState("")
   const [createPhasesEnabled, setCreatePhasesEnabled] = useState(false)
   const [createPhaseRows, setCreatePhaseRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -245,9 +264,11 @@ export default function App() {
   const [timeOffRequests, setTimeOffRequests] = useState([])
   const [timeOffLoading, setTimeOffLoading] = useState(false)
   const [timeOffDate, setTimeOffDate] = useState("")
+  const [timeOffEndDate, setTimeOffEndDate] = useState("")
   const [timeOffReason, setTimeOffReason] = useState("")
   const [timeOffType, setTimeOffType] = useState("Day Off")
   const [showTimeOffForm, setShowTimeOffForm] = useState(false)
+  const [showAdminTimeOffPanel, setShowAdminTimeOffPanel] = useState(false)
   const [doctorNoteFile, setDoctorNoteFile] = useState(null)
   const [doctorNoteFileName, setDoctorNoteFileName] = useState("")
   const [timeOffSaving, setTimeOffSaving] = useState(false)
@@ -273,6 +294,18 @@ export default function App() {
   const [timeOffActionId, setTimeOffActionId] = useState("")
   const [openingDoctorNoteId, setOpeningDoctorNoteId] = useState("")
   const [approvedTimeOffRequests, setApprovedTimeOffRequests] = useState([])
+  const [adminTimeOffEmployeeEmail, setAdminTimeOffEmployeeEmail] = useState("")
+  const [adminTimeOffDate, setAdminTimeOffDate] = useState("")
+  const [adminTimeOffEndDate, setAdminTimeOffEndDate] = useState("")
+  const [adminTimeOffReason, setAdminTimeOffReason] = useState("")
+  const [adminTimeOffSaving, setAdminTimeOffSaving] = useState(false)
+  const [calendarNotes, setCalendarNotes] = useState([])
+  const [calendarNoteText, setCalendarNoteText] = useState("")
+  const [calendarNoteEmployeeEmail, setCalendarNoteEmployeeEmail] = useState("")
+  const [calendarNoteMenuDate, setCalendarNoteMenuDate] = useState("")
+  const [calendarDragJobId, setCalendarDragJobId] = useState("")
+  const [calendarNoteSaving, setCalendarNoteSaving] = useState(false)
+  const [calendarNoteNotice, setCalendarNoteNotice] = useState({ type: "", message: "" })
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("")
   const [selectedJobId, setSelectedJobId] = useState(null)
   const [editingJobId, setEditingJobId] = useState(null)
@@ -282,6 +315,7 @@ export default function App() {
   const [editNotice, setEditNotice] = useState({ type: "", message: "" })
   const [timerNotice, setTimerNotice] = useState({ type: "", message: "" })
   const [timerSaving, setTimerSaving] = useState(false)
+  const [manualTimeMinutes, setManualTimeMinutes] = useState("")
   const [employeeJobNote, setEmployeeJobNote] = useState("")
   const [voiceListeningTarget, setVoiceListeningTarget] = useState("")
   const [voiceNotice, setVoiceNotice] = useState({ type: "", message: "" })
@@ -302,6 +336,8 @@ export default function App() {
   const [nextPhaseAssignees, setNextPhaseAssignees] = useState([])
   const [nextPhaseSaving, setNextPhaseSaving] = useState(false)
   const [nextPhaseNotice, setNextPhaseNotice] = useState({ type: "", message: "" })
+  const [showNotesPanel, setShowNotesPanel] = useState(false)
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false)
   const [assigningJobId, setAssigningJobId] = useState(null)
   const [employeeAssignNotice, setEmployeeAssignNotice] = useState({ type: "", message: "" })
   const [detailsAssignName, setDetailsAssignName] = useState("")
@@ -345,6 +381,7 @@ export default function App() {
   const browserNotificationsReadyRef = useRef(false)
   const [editForm, setEditForm] = useState({
     title: "",
+    job_number: "",
     job_description: "",
     location: "",
     assigned_to: [],
@@ -444,19 +481,40 @@ export default function App() {
       (employee) => String(employee.email || "").toLowerCase().trim() === signedInEmailLocal
     )
     const isExplicitAdmin = userRole === "admin"
-    const isExplicitEmployee = userRole === "employee"
-    const isEmployeeUserLocal = isExplicitEmployee || Boolean(currentEmployeeProfileLocal)
     const appRoleLocal = isExplicitAdmin ? "admin" : "employee"
 
     if (appRoleLocal === "employee") {
       loadTimeOffRequests(signedInEmailLocal)
       loadApprovedTimeOffRequests()
+      loadCalendarNotes()
       return
     }
 
     loadAdminTimeOffRequests()
     loadApprovedTimeOffRequests()
+    loadCalendarNotes()
   }, [session, userRole, employees])
+
+  useEffect(() => {
+    if (!session) return
+
+    const signedInEmailLocal = String(session.user?.email || "").toLowerCase().trim()
+    const currentEmployeeProfileLocal = employees.find(
+      (employee) => String(employee.email || "").toLowerCase().trim() === signedInEmailLocal
+    )
+    const isExplicitAdmin = userRole === "admin"
+    const isExplicitEmployee = userRole === "employee"
+    const isEmployeeUserLocal = isExplicitEmployee || Boolean(currentEmployeeProfileLocal)
+    const appRoleLocal = isExplicitAdmin ? "admin" : "employee"
+
+    if (appRoleLocal !== "admin") return
+    if (calendarNoteEmployeeEmail) return
+
+    const firstEmployeeEmail = String(employees[0]?.email || "").toLowerCase().trim()
+    if (firstEmployeeEmail) {
+      setCalendarNoteEmployeeEmail(firstEmployeeEmail)
+    }
+  }, [session, userRole, employees, calendarNoteEmployeeEmail])
 
   useEffect(() => {
     if (!session) {
@@ -613,9 +671,52 @@ export default function App() {
             )
         : []
 
+    const adminTimeOffNotificationsLocal =
+      appRoleLocal === "admin"
+        ? adminTimeOffRequests
+            .filter((request) => String(request.status || "Pending") === "Pending")
+            .map((request) => {
+              const details = parseTimeOffReasonDetails(request.reason)
+              const rangeLabel = formatTimeOffRequestDateRange(request)
+              const requester =
+                request.employee_name || request.employee_email || "Employee"
+
+              return {
+                id: `timeoff-request-${request.id}`,
+                work_order_id: null,
+                event_type: "time_off_requested",
+                event_label: `Time-off requested: ${requester} | ${details.type || "Day Off"} | ${rangeLabel}`,
+                created_at:
+                  request.created_at ||
+                  request.updated_at ||
+                  request.request_date ||
+                  null,
+                actor_name: requester,
+                metadata: {
+                  employee_name: request.employee_name || null,
+                  employee_email: request.employee_email || null,
+                  request_type: details.type || "Day Off",
+                  from: details.startDate || normalizeDateInput(request.request_date) || null,
+                  to:
+                    details.endDate ||
+                    details.startDate ||
+                    normalizeDateInput(request.request_date) ||
+                    null
+                }
+              }
+            })
+        : []
+
+    const adminSourceEvents =
+      appRoleLocal === "admin"
+        ? [...adminNotifications, ...adminTimeOffNotificationsLocal].sort(
+            (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+          )
+        : []
+
     const sourceEvents =
       appRoleLocal === "admin"
-        ? adminNotifications.filter((event) => !openedAdminNotificationIds.includes(event.id))
+        ? adminSourceEvents.filter((event) => !openedAdminNotificationIds.includes(event.id))
         : appRoleLocal === "employee"
           ? employeeAssignmentNotificationsLocal.filter(
               (event) => !openedEmployeeNotificationIds.includes(event.id)
@@ -680,6 +781,7 @@ export default function App() {
     employees,
     jobs,
     adminNotifications,
+    adminTimeOffRequests,
     openedAdminNotificationIds,
     openedEmployeeNotificationIds
   ])
@@ -719,7 +821,7 @@ export default function App() {
 
     const jobsForDate = jobs.filter(
       (job) =>
-        normalizeDateInput(job.scheduled_date) === mapDate &&
+        getWorkOrderScheduleDateKeys(job).includes(mapDate) &&
         String(job.status || "").trim().toLowerCase() !== "completed"
     )
 
@@ -1107,6 +1209,14 @@ export default function App() {
       return `Schedule changed to ${metadata.to || "Not set"}`
     }
 
+    if (type === "time_off_requested") {
+      const employee = metadata.employee_name || metadata.employee_email || "Employee"
+      const fromDate = metadata.from || metadata.request_date || "Not set"
+      const toDate = metadata.to || fromDate
+      const typeLabel = metadata.request_type || "Day Off"
+      return `Time-off requested: ${employee} | ${typeLabel} | ${fromDate}${toDate && toDate !== fromDate ? ` -> ${toDate}` : ""}`
+    }
+
     return type ? type.replaceAll("_", " ") : "Event"
   }
 
@@ -1114,17 +1224,87 @@ export default function App() {
     const raw = String(value || "").trim()
     const typeMatch = raw.match(/\[TYPE:([^\]]+)\]/i)
     const noteMatch = raw.match(/\[DOCTOR_NOTE:([^\]]+)\]/i)
+    const fromMatch = raw.match(/\[FROM:([^\]]+)\]/i)
+    const toMatch = raw.match(/\[TO:([^\]]+)\]/i)
 
     const cleaned = raw
       .replace(/\[TYPE:[^\]]+\]/gi, "")
       .replace(/\[DOCTOR_NOTE:[^\]]+\]/gi, "")
+      .replace(/\[FROM:[^\]]+\]/gi, "")
+      .replace(/\[TO:[^\]]+\]/gi, "")
       .trim()
+
+    const startDate = normalizeDateInput(fromMatch?.[1] || "")
+    const endDate = normalizeDateInput(toMatch?.[1] || "")
 
     return {
       type: typeMatch?.[1]?.trim() || "Day Off",
       doctorNotePath: noteMatch?.[1]?.trim() || "",
+      startDate,
+      endDate,
       displayReason: cleaned
     }
+  }
+
+  function getDateRangeKeys(startDateValue, endDateValue) {
+    const startDate = normalizeDateInput(startDateValue)
+    const endDate = normalizeDateInput(endDateValue || startDateValue)
+    if (!startDate || !endDate) return []
+
+    const start = new Date(`${startDate}T00:00:00`)
+    const end = new Date(`${endDate}T00:00:00`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return []
+
+    const keys = []
+    const cursor = new Date(start)
+
+    while (cursor <= end) {
+      keys.push(getLocalDateKey(cursor))
+      cursor.setDate(cursor.getDate() + 1)
+    }
+
+    return keys
+  }
+
+  function getTimeOffRequestDateKeys(request) {
+    const details = parseTimeOffReasonDetails(request?.reason)
+    const fallbackDate = normalizeDateInput(request?.request_date)
+    const start = details.startDate || fallbackDate
+    const end = details.endDate || start
+    return getDateRangeKeys(start, end)
+  }
+
+  function formatTimeOffRequestDateRange(request) {
+    const keys = getTimeOffRequestDateKeys(request)
+    if (keys.length === 0) return "Not set"
+    if (keys.length === 1) return keys[0]
+    return `${keys[0]} - ${keys[keys.length - 1]}`
+  }
+
+  function getWorkOrderScheduleDateKeys(job) {
+    const { startDate, endDate } = getWorkOrderScheduleRange(job)
+    const normalizedStart = normalizeDateInput(startDate)
+    const normalizedEnd = normalizeDateInput(endDate || startDate)
+    if (!normalizedStart || !normalizedEnd) return []
+
+    const start = new Date(`${normalizedStart}T00:00:00`)
+    const end = new Date(`${normalizedEnd}T00:00:00`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return []
+
+    const keys = [normalizedStart]
+    const cursor = new Date(start)
+
+    while (cursor < end) {
+      cursor.setDate(cursor.getDate() + 1)
+      const weekday = cursor.getDay()
+      if (weekday === 0 || weekday === 6) {
+        continue
+      }
+
+      keys.push(getLocalDateKey(cursor))
+    }
+
+    return Array.from(new Set(keys))
   }
 
   async function uploadDoctorNoteForTimeOff(employeeEmail, file) {
@@ -1177,6 +1357,7 @@ export default function App() {
       START_SHIFT: "",
       ARRIVE_ON_SITE: "",
       LEAVE_SITE: "",
+      END_SHIFT: "",
       COMPLETE_JOB: ""
     }
 
@@ -1184,7 +1365,7 @@ export default function App() {
 
     lines.forEach((line) => {
       const match = line.match(
-        /^\[CHECKIN:(START_SHIFT|ARRIVE_ON_SITE|LEAVE_SITE|COMPLETE_JOB)\]\s+(.+?)\s+\|/
+        /^\[CHECKIN:(START_SHIFT|ARRIVE_ON_SITE|LEAVE_SITE|END_SHIFT|COMPLETE_JOB)\]\s+(.+?)\s+\|/
       )
 
       if (!match) return
@@ -1194,13 +1375,115 @@ export default function App() {
     return events
   }
 
+  function isHiddenWorkOrderMetaLine(lineValue) {
+    const line = String(lineValue || "").trim()
+    return /^\[(ESTIMATE_HOURS|SCHEDULE_END):/i.test(line)
+  }
+
   function extractUserNotes(notesValue) {
     return String(notesValue || "")
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("[CHECKIN:"))
+      .filter((line) => line && !line.startsWith("[CHECKIN:") && !isHiddenWorkOrderMetaLine(line))
       .join("\n")
       .trim()
+  }
+
+  function parseWorkOrderScheduleMeta(notesValue) {
+    const lines = String(notesValue || "").split("\n")
+    const estimateMatch = lines
+      .map((line) => line.match(/^\[ESTIMATE_HOURS:([^\]]+)\]$/i))
+      .find(Boolean)
+    const endMatch = lines
+      .map((line) => line.match(/^\[SCHEDULE_END:([^\]]+)\]$/i))
+      .find(Boolean)
+
+    const estimatedHours = Number(estimateMatch?.[1] || 0)
+
+    return {
+      estimatedHours: Number.isFinite(estimatedHours) && estimatedHours > 0 ? estimatedHours : 0,
+      scheduledEndDate: normalizeDateInput(endMatch?.[1] || "") || ""
+    }
+  }
+
+  function getCheckInLines(notesValue) {
+    return String(notesValue || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("[CHECKIN:"))
+  }
+
+  function normalizeEstimatedHours(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return 0
+    return Math.round(numeric * 100) / 100
+  }
+
+  function addBusinessDaysSkippingWeekends(startDateKey, additionalDays) {
+    const normalizedStart = normalizeDateInput(startDateKey)
+    if (!normalizedStart) return ""
+
+    const cursor = new Date(`${normalizedStart}T00:00:00`)
+    if (Number.isNaN(cursor.getTime())) return ""
+
+    let daysRemaining = Math.max(0, Number(additionalDays || 0))
+    while (daysRemaining > 0) {
+      cursor.setDate(cursor.getDate() + 1)
+      const weekday = cursor.getDay()
+      if (weekday === 0 || weekday === 6) {
+        continue
+      }
+      daysRemaining -= 1
+    }
+
+    return getLocalDateKey(cursor)
+  }
+
+  function calculateScheduledEndDate(startDateKey, estimatedHoursValue) {
+    const normalizedStart = normalizeDateInput(startDateKey)
+    const estimatedHours = normalizeEstimatedHours(estimatedHoursValue)
+    if (!normalizedStart || estimatedHours <= 0) return ""
+
+    const dayCount = Math.max(1, Math.ceil(estimatedHours / 8))
+    return addBusinessDaysSkippingWeekends(normalizedStart, dayCount - 1) || normalizedStart
+  }
+
+  function buildWorkOrderNotesValue(userNotesValue, existingNotesValue, scheduleMeta = {}) {
+    const visibleNotes = String(userNotesValue || "").trim()
+    const checkInLines = getCheckInLines(existingNotesValue)
+    const estimatedHours = normalizeEstimatedHours(scheduleMeta.estimatedHours)
+    const scheduledEndDate = normalizeDateInput(scheduleMeta.scheduledEndDate || "")
+    const metaLines = []
+
+    if (estimatedHours > 0) {
+      metaLines.push(`[ESTIMATE_HOURS:${estimatedHours}]`)
+    }
+
+    if (scheduledEndDate) {
+      metaLines.push(`[SCHEDULE_END:${scheduledEndDate}]`)
+    }
+
+    return [visibleNotes, ...metaLines, ...checkInLines].filter(Boolean).join("\n").trim()
+  }
+
+  function getWorkOrderScheduleRange(job) {
+    const startDate = normalizeDateInput(job?.scheduled_date)
+    const scheduleMeta = parseWorkOrderScheduleMeta(job?.notes)
+    const derivedEndDate = calculateScheduledEndDate(startDate, scheduleMeta.estimatedHours)
+    const endDate = scheduleMeta.scheduledEndDate || derivedEndDate || startDate || ""
+
+    return {
+      startDate,
+      endDate,
+      estimatedHours: scheduleMeta.estimatedHours
+    }
+  }
+
+  function formatWorkOrderScheduledDate(job) {
+    const { startDate, endDate } = getWorkOrderScheduleRange(job)
+    if (!startDate) return "Not set"
+    if (!endDate || endDate === startDate) return formatScheduledDate(startDate)
+    return `${formatScheduledDate(startDate)} - ${formatScheduledDate(endDate)}`
   }
 
   function parseUserNoteEntries(notesValue) {
@@ -2039,6 +2322,7 @@ export default function App() {
     if (normalized === "on hold") return "status-pill--on-hold"
     if (normalized === "in progress") return "status-pill--in-progress"
     if (normalized === "paused") return "status-pill--paused"
+    if (normalized === "pending invoice" || normalized === "work to invoice") return "status-pill--pending-invoice"
     if (normalized === "completed") return "status-pill--completed"
 
     return "status-pill--scheduled"
@@ -2158,12 +2442,13 @@ export default function App() {
     setEditingJobId(job.id)
     setEditForm({
       title: job.title || "",
+      job_number: String(job.job_number || "").trim(),
       job_description: job.job_description || "",
       location: job.location || "",
       assigned_to: parseAssignees(job.assigned_to),
       scheduled_date: normalizeDateInput(job.scheduled_date),
       status: job.status || "Scheduled",
-      notes: job.notes || ""
+      notes: extractUserNotes(job.notes)
     })
   }
 
@@ -2253,10 +2538,33 @@ export default function App() {
     }
   }
 
+  async function logAdminNotificationEvent({ eventType, eventLabel, metadata = {} }) {
+    if (!eventType) return
+
+    const actorName = currentEmployeeName || session?.user?.email || "System"
+    const actorEmail = session?.user?.email || null
+
+    const { error } = await supabase.from(WORK_ORDER_EVENTS_TABLE).insert([
+      {
+        work_order_id: null,
+        event_type: eventType,
+        event_label: eventLabel || null,
+        actor_name: actorName,
+        actor_email: actorEmail,
+        metadata
+      }
+    ])
+
+    if (error) {
+      console.log("LOG ADMIN EVENT ERROR:", error)
+    }
+  }
+
   function cancelEditing() {
     setEditingJobId(null)
     setEditForm({
       title: "",
+      job_number: "",
       job_description: "",
       location: "",
       assigned_to: [],
@@ -2284,6 +2592,9 @@ export default function App() {
     setEmployeeJobActionNotice({ type: "", message: "" })
     setNextPhaseAssignees([])
     setNextPhaseNotice({ type: "", message: "" })
+    setManualTimeMinutes("")
+    setShowNotesPanel(false)
+    setShowHistoryPanel(false)
     setViewMode("details")
     setDocsNotice({ type: "", message: "" })
     loadDocuments(jobId)
@@ -2298,6 +2609,9 @@ export default function App() {
     setEmployeeJobActionNotice({ type: "", message: "" })
     setNextPhaseAssignees([])
     setNextPhaseNotice({ type: "", message: "" })
+    setManualTimeMinutes("")
+    setShowNotesPanel(false)
+    setShowHistoryPanel(false)
     setDetailsAssignName("")
     setJobEvents([])
     setViewMode("dashboard")
@@ -2307,6 +2621,19 @@ export default function App() {
     setCreatePhasesEnabled(false)
     setCreatePhaseRows([])
     setViewMode("create")
+  }
+
+  function openCreateViewForDate(dateKey) {
+    openCreateView()
+    setSelectedJobTemplateId("")
+    setTitle("")
+    setJobDescription("")
+    setNotes("")
+    setLocation("")
+    setAssignedTo([])
+    setCreateEstimatedHours("")
+    setCreateJobNumber("")
+    setScheduledDate(normalizeDateInput(dateKey) || "")
   }
 
   function openDashboardView() {
@@ -2338,6 +2665,9 @@ export default function App() {
     setCalendarAnchorDate(new Date(today.getFullYear(), today.getMonth(), today.getDate()))
     setCalendarSearchDate(todayKey)
     setSelectedCalendarDateKey(todayKey)
+    setCalendarNoteMenuDate("")
+    setCalendarNoteText("")
+    setCalendarNoteNotice({ type: "", message: "" })
     setViewMode("calendar")
   }
 
@@ -2365,6 +2695,9 @@ export default function App() {
     setCalendarSearchDate(dateKey)
     setCalendarAssignJobId("")
     setCalendarAssignNotice({ type: "", message: "" })
+    setCalendarNoteMenuDate("")
+    setCalendarNoteText("")
+    setCalendarNoteNotice({ type: "", message: "" })
   }
 
   function openEmployeeDetails(employeeId) {
@@ -2414,12 +2747,13 @@ export default function App() {
     }
   }
 
-  async function assignWorkOrderToCalendarDate() {
-    if (!selectedCalendarDateKey || !calendarAssignJobId) return
+  async function assignWorkOrderToDate(jobId, dateKey) {
+    if (!jobId || !dateKey) return
 
-    const targetJob = jobs.find((job) => job.id === calendarAssignJobId)
+    const targetJob = jobs.find((job) => job.id === jobId)
+    if (!targetJob) return
     const unavailableAssignees = parseAssignees(targetJob?.assigned_to).filter((name) =>
-      isEmployeeUnavailableOnDate(name, selectedCalendarDateKey)
+      isEmployeeUnavailableOnDate(name, dateKey)
     )
 
     if (unavailableAssignees.length > 0) {
@@ -2433,10 +2767,21 @@ export default function App() {
     setCalendarAssigning(true)
     setCalendarAssignNotice({ type: "", message: "" })
 
+    const scheduleMeta = parseWorkOrderScheduleMeta(targetJob.notes)
+    const nextEndDate = calculateScheduledEndDate(dateKey, scheduleMeta.estimatedHours)
+    const nextNotes = buildWorkOrderNotesValue(
+      extractUserNotes(targetJob.notes),
+      targetJob.notes,
+      {
+        estimatedHours: scheduleMeta.estimatedHours,
+        scheduledEndDate: nextEndDate
+      }
+    )
+
     const { error } = await supabase
       .from("work_orders")
-      .update({ scheduled_date: selectedCalendarDateKey })
-      .eq("id", calendarAssignJobId)
+      .update({ scheduled_date: dateKey, notes: nextNotes })
+      .eq("id", jobId)
 
     if (error) {
       setCalendarAssignNotice({
@@ -2445,10 +2790,10 @@ export default function App() {
       })
     } else {
       await logWorkOrderEvent({
-        workOrderId: calendarAssignJobId,
+        workOrderId: jobId,
         eventType: "schedule_changed",
-        eventLabel: `Scheduled for ${selectedCalendarDateKey}`,
-        metadata: { to: selectedCalendarDateKey }
+        eventLabel: `Scheduled for ${dateKey}`,
+        metadata: { to: dateKey }
       })
       await loadJobs()
       setCalendarAssignNotice({
@@ -2456,8 +2801,66 @@ export default function App() {
         message: "Work order scheduled successfully."
       })
       setCalendarAssignJobId("")
+      setCalendarDragJobId("")
     }
 
+    setCalendarAssigning(false)
+  }
+
+  async function assignWorkOrderToCalendarDate() {
+    if (!selectedCalendarDateKey || !calendarAssignJobId) return
+    await assignWorkOrderToDate(calendarAssignJobId, selectedCalendarDateKey)
+  }
+
+  async function dropUnassignedJobOnCalendarDate(dateKey) {
+    const normalizedDate = normalizeDateInput(dateKey)
+    if (!normalizedDate || !calendarDragJobId || appRole !== "admin") return
+    await assignWorkOrderToDate(calendarDragJobId, normalizedDate)
+  }
+
+  async function unassignWorkOrderFromCalendarDate() {
+    if (!calendarDragJobId || appRole !== "admin") return
+
+    const targetJob = jobs.find((job) => job.id === calendarDragJobId)
+    if (!targetJob) return
+
+    setCalendarAssigning(true)
+    setCalendarAssignNotice({ type: "", message: "" })
+
+    const scheduleMeta = parseWorkOrderScheduleMeta(targetJob.notes)
+    const nextNotes = buildWorkOrderNotesValue(
+      extractUserNotes(targetJob.notes),
+      targetJob.notes,
+      {
+        estimatedHours: scheduleMeta.estimatedHours,
+        scheduledEndDate: ""
+      }
+    )
+
+    const { error } = await supabase
+      .from("work_orders")
+      .update({ scheduled_date: null, notes: nextNotes })
+      .eq("id", calendarDragJobId)
+
+    if (error) {
+      setCalendarAssignNotice({
+        type: "error",
+        message: `Could not remove scheduled date: ${error.message}`
+      })
+      setCalendarAssigning(false)
+      return
+    }
+
+    await logWorkOrderEvent({
+      workOrderId: calendarDragJobId,
+      eventType: "schedule_changed",
+      eventLabel: "Schedule cleared",
+      metadata: { to: null }
+    })
+
+    await loadJobs()
+    setCalendarDragJobId("")
+    setCalendarAssignNotice({ type: "success", message: "Work order moved to unassigned pool." })
     setCalendarAssigning(false)
   }
 
@@ -2473,6 +2876,7 @@ export default function App() {
       .from(TIME_OFF_REQUESTS_TABLE)
       .select("*")
       .eq("employee_email", employeeEmail)
+      .in("status", ["Pending", "Approved", "Denied"])
       .order("request_date", { ascending: false })
 
     if (error) {
@@ -2497,6 +2901,7 @@ export default function App() {
     const { data, error } = await supabase
       .from(TIME_OFF_REQUESTS_TABLE)
       .select("*")
+      .in("status", ["Pending", "Approved", "Denied"])
       .order("request_date", { ascending: true })
 
     if (error) {
@@ -2513,6 +2918,23 @@ export default function App() {
 
     setAdminTimeOffRequests(data || [])
     setAdminTimeOffLoading(false)
+  }
+
+  async function loadCalendarNotes() {
+    const { data, error } = await supabase
+      .from(TIME_OFF_REQUESTS_TABLE)
+      .select("id, employee_name, employee_email, request_date, reason, status, created_at")
+      .eq("status", "Calendar Note")
+      .order("request_date", { ascending: true })
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.log("LOAD CALENDAR NOTES ERROR:", error)
+      setCalendarNotes([])
+      return
+    }
+
+    setCalendarNotes(data || [])
   }
 
   async function loadAdminNotifications() {
@@ -2642,7 +3064,7 @@ export default function App() {
   async function loadApprovedTimeOffRequests() {
     const { data, error } = await supabase
       .from(TIME_OFF_REQUESTS_TABLE)
-      .select("id, employee_name, employee_email, request_date, status")
+      .select("id, employee_name, employee_email, request_date, reason, status")
       .eq("status", "Approved")
 
     if (error) {
@@ -2661,7 +3083,7 @@ export default function App() {
       (request) =>
         String(request.employee_name || "").toLowerCase() ===
           String(employeeName || "").toLowerCase() &&
-        normalizeDateInput(request.request_date) === normalizeDateInput(dateKey)
+        getTimeOffRequestDateKeys(request).includes(normalizeDateInput(dateKey))
     )
   }
 
@@ -2697,7 +3119,8 @@ export default function App() {
   async function submitTimeOffRequest() {
     if (appRole !== "employee") return
 
-    const requestDate = normalizeDateInput(timeOffDate || selectedCalendarDateKey)
+    const requestStartDate = normalizeDateInput(timeOffDate || selectedCalendarDateKey)
+    const requestEndDate = normalizeDateInput(timeOffEndDate || timeOffDate || selectedCalendarDateKey)
     const reason = String(timeOffReason || "").trim()
     const employeeEmail = String(currentEmployeeProfile?.email || session?.user?.email || "")
       .toLowerCase()
@@ -2705,8 +3128,13 @@ export default function App() {
     const employeeName =
       currentEmployeeName || currentEmployeeProfile?.name || session?.user?.email || "Employee"
 
-    if (!requestDate) {
-      setTimeOffNotice({ type: "error", message: "Please choose a date for the request." })
+    if (!requestStartDate || !requestEndDate) {
+      setTimeOffNotice({ type: "error", message: "Please choose both From and To dates." })
+      return
+    }
+
+    if (requestStartDate > requestEndDate) {
+      setTimeOffNotice({ type: "error", message: "From date cannot be after To date." })
       return
     }
 
@@ -2730,6 +3158,8 @@ export default function App() {
 
     const taggedReason = [
       `[TYPE:${timeOffType}]`,
+      `[FROM:${requestStartDate}]`,
+      `[TO:${requestEndDate}]`,
       doctorNotePath ? `[DOCTOR_NOTE:${doctorNotePath}]` : "",
       reason
     ]
@@ -2740,7 +3170,7 @@ export default function App() {
       {
         employee_email: employeeEmail,
         employee_name: employeeName,
-        request_date: requestDate,
+        request_date: requestStartDate,
         reason: taggedReason || null,
         status: "Pending"
       }
@@ -2755,14 +3185,164 @@ export default function App() {
       return
     }
 
+    await logAdminNotificationEvent({
+      eventType: "time_off_requested",
+      eventLabel: `${timeOffType} requested by ${employeeName}`,
+      metadata: {
+        employee_name: employeeName,
+        employee_email: employeeEmail,
+        request_type: timeOffType,
+        from: requestStartDate,
+        to: requestEndDate,
+        reason: reason || null,
+        doctor_note_attached: Boolean(doctorNotePath)
+      }
+    })
+
     await loadTimeOffRequests(employeeEmail)
     await loadApprovedTimeOffRequests()
     setTimeOffNotice({ type: "success", message: `${timeOffType} request submitted.` })
     setTimeOffReason("")
+    setTimeOffDate("")
+    setTimeOffEndDate("")
     setDoctorNoteFile(null)
     setDoctorNoteFileName("")
     setShowTimeOffForm(false)
     setTimeOffSaving(false)
+  }
+
+  async function submitAdminTimeOffRequest() {
+    if (appRole !== "admin") return
+
+    const targetEmail = normalizeEmployeeEmail(adminTimeOffEmployeeEmail)
+    const targetEmployee = employees.find(
+      (employee) => normalizeEmployeeEmail(employee.email) === targetEmail
+    )
+    const requestStartDate = normalizeDateInput(adminTimeOffDate || selectedCalendarDateKey)
+    const requestEndDate = normalizeDateInput(adminTimeOffEndDate || adminTimeOffDate || selectedCalendarDateKey)
+    const reason = String(adminTimeOffReason || "").trim()
+
+    if (!targetEmail || !targetEmployee) {
+      setTimeOffNotice({ type: "error", message: "Choose an employee for time off." })
+      return
+    }
+
+    if (!requestStartDate || !requestEndDate) {
+      setTimeOffNotice({ type: "error", message: "Please choose both From and To dates." })
+      return
+    }
+
+    if (requestStartDate > requestEndDate) {
+      setTimeOffNotice({ type: "error", message: "From date cannot be after To date." })
+      return
+    }
+
+    setAdminTimeOffSaving(true)
+    setTimeOffNotice({ type: "", message: "" })
+
+    const taggedReason = [
+      "[TYPE:Day Off]",
+      `[FROM:${requestStartDate}]`,
+      `[TO:${requestEndDate}]`,
+      reason
+    ]
+      .filter(Boolean)
+      .join(" ")
+
+    const { error } = await supabase.from(TIME_OFF_REQUESTS_TABLE).insert([
+      {
+        employee_email: targetEmail,
+        employee_name: targetEmployee.name || targetEmail,
+        request_date: requestStartDate,
+        reason: taggedReason || null,
+        status: "Approved"
+      }
+    ])
+
+    if (error) {
+      setTimeOffNotice({
+        type: "error",
+        message: `Could not create time off: ${error.message}`
+      })
+      setAdminTimeOffSaving(false)
+      return
+    }
+
+    await loadAdminTimeOffRequests()
+    await loadApprovedTimeOffRequests()
+    setAdminTimeOffDate("")
+    setAdminTimeOffEndDate("")
+    setAdminTimeOffReason("")
+    setTimeOffNotice({
+      type: "success",
+      message: `Time off added for ${targetEmployee.name || targetEmail}.`
+    })
+    setAdminTimeOffSaving(false)
+  }
+
+  async function submitCalendarNote() {
+    if (!selectedCalendarDateKey) {
+      setCalendarNoteNotice({ type: "error", message: "Select a calendar date first." })
+      return
+    }
+
+    const trimmedNote = String(calendarNoteText || "").trim()
+    if (!trimmedNote) {
+      setCalendarNoteNotice({ type: "error", message: "Enter a note before saving." })
+      return
+    }
+
+    const employeeEmail =
+      appRole === "admin"
+        ? normalizeEmployeeEmail(calendarNoteEmployeeEmail)
+        : normalizeEmployeeEmail(session?.user?.email)
+
+    if (!employeeEmail) {
+      setCalendarNoteNotice({ type: "error", message: "Choose an employee for this note." })
+      return
+    }
+
+    const targetEmployee = employees.find(
+      (employee) => normalizeEmployeeEmail(employee.email) === employeeEmail
+    )
+    const employeeName =
+      targetEmployee?.name ||
+      (appRole === "employee" ? currentEmployeeName || session?.user?.email : employeeEmail)
+
+    setCalendarNoteSaving(true)
+    setCalendarNoteNotice({ type: "", message: "" })
+
+    const taggedReason = [
+      "[TYPE:Calendar Note]",
+      `[FROM:${selectedCalendarDateKey}]`,
+      `[TO:${selectedCalendarDateKey}]`,
+      trimmedNote
+    ].join(" ")
+
+    const { error } = await supabase.from(TIME_OFF_REQUESTS_TABLE).insert([
+      {
+        employee_email: employeeEmail,
+        employee_name: employeeName || employeeEmail,
+        request_date: selectedCalendarDateKey,
+        reason: taggedReason,
+        status: "Calendar Note"
+      }
+    ])
+
+    if (error) {
+      setCalendarNoteNotice({
+        type: "error",
+        message: `Could not save calendar note: ${error.message}`
+      })
+      setCalendarNoteSaving(false)
+      return
+    }
+
+    await loadCalendarNotes()
+    setCalendarNoteText("")
+    setCalendarNoteMenuDate("")
+    setCalendarNoteNotice({ type: "success", message: "Calendar note added." })
+    setCalendarNoteSaving(false)
   }
 
   async function assignWorkOrderToEmployee(jobId, employeeName) {
@@ -3063,9 +3643,19 @@ export default function App() {
       return
     }
 
+    const scheduleMeta = parseWorkOrderScheduleMeta(job.notes)
+    const nextNotes = buildWorkOrderNotesValue(
+      extractUserNotes(job.notes),
+      job.notes,
+      {
+        estimatedHours: scheduleMeta.estimatedHours,
+        scheduledEndDate: calculateScheduledEndDate(normalizedDate, scheduleMeta.estimatedHours)
+      }
+    )
+
     await applyDispatchJobUpdates(
       job,
-      { scheduled_date: normalizedDate || null },
+      { scheduled_date: normalizedDate || null, notes: nextNotes },
       normalizedDate ? `Scheduled for ${normalizedDate}.` : "Schedule cleared."
     )
   }
@@ -3102,6 +3692,26 @@ export default function App() {
 
   async function startTimerForJob(job) {
     if (!job || isTimerRunning(job)) return
+
+    const isAssignedToCurrentEmployee = isAssignedToCurrentUser(job.assigned_to)
+    if (appRole === "employee" && !isAssignedToCurrentEmployee) {
+      setTimerNotice({
+        type: "error",
+        message: "Only assigned employees can start the timer for this work order."
+      })
+      return
+    }
+
+    if (appRole === "admin") {
+      const assigneeLabel = parseAssignees(job.assigned_to).join(", ") || "Unassigned"
+      const shouldStartTimer = window.confirm(
+        `Start timer for \"${job.title || "Work Order"}\"?\n\nAssigned to: ${assigneeLabel}`
+      )
+
+      if (!shouldStartTimer) {
+        return
+      }
+    }
 
     setTimerSaving(true)
     setTimerNotice({ type: "", message: "" })
@@ -3162,6 +3772,10 @@ export default function App() {
       timer_accumulated_seconds: elapsed
     }
 
+    if (String(job.status || "") !== "Paused") {
+      updates.status = "Paused"
+    }
+
     const { data, error } = await supabase
       .from("work_orders")
       .update(updates)
@@ -3176,6 +3790,14 @@ export default function App() {
       })
     } else if (data) {
       setJobs((current) => current.map((item) => (item.id === data.id ? data : item)))
+      if (String(job.status || "") !== String(data.status || "")) {
+        await logWorkOrderEvent({
+          workOrderId: job.id,
+          eventType: "status_changed",
+          eventLabel: `Status changed: ${job.status || "Not set"} -> ${data.status || "Not set"}`,
+          metadata: { from: job.status || null, to: data.status || null }
+        })
+      }
       await logWorkOrderEvent({
         workOrderId: job.id,
         eventType: "timer_paused",
@@ -3219,6 +3841,85 @@ export default function App() {
         metadata: {}
       })
       setTimerNotice({ type: "success", message: "Timer reset." })
+    }
+
+    setTimerSaving(false)
+  }
+
+  async function addManualTimeToJob(job, minutesValue, mode = "add") {
+    if (!job) return
+
+    const minutes = Number(minutesValue)
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      setTimerNotice({
+        type: "error",
+        message: "Enter missed time in minutes greater than 0."
+      })
+      return
+    }
+
+    if (typeof window !== "undefined") {
+      const actionLabel = mode === "subtract" ? "subtract" : "add"
+      const confirmed = window.confirm(
+        `Are you sure you want to ${actionLabel} ${minutes} minute(s) ${
+          mode === "subtract" ? "from" : "to"
+        } this work order's tracked time?`
+      )
+
+      if (!confirmed) {
+        setTimerNotice({ type: "", message: "" })
+        return
+      }
+    }
+
+    const deltaSeconds = Math.round(minutes * 60) * (mode === "subtract" ? -1 : 1)
+    const nextAccumulatedSeconds = Math.max(0, getElapsedSeconds(job) + deltaSeconds)
+
+    setTimerSaving(true)
+    setTimerNotice({ type: "", message: "" })
+
+    const { data, error } = await supabase
+      .from("work_orders")
+      .update({
+        timer_accumulated_seconds: nextAccumulatedSeconds
+      })
+      .eq("id", job.id)
+      .select()
+      .maybeSingle()
+
+    if (error) {
+      setTimerNotice({
+        type: "error",
+        message: `Could not add missed time: ${error.message}`
+      })
+      setTimerSaving(false)
+      return
+    }
+
+    if (data) {
+      setJobs((current) => current.map((item) => (item.id === data.id ? data : item)))
+      await logWorkOrderEvent({
+        workOrderId: job.id,
+        eventType: "timer_adjusted",
+        eventLabel:
+          mode === "subtract"
+            ? `Subtracted ${minutes} minute(s) from tracked time`
+            : `Added ${minutes} minute(s) of missed time`,
+        metadata: {
+          action: mode,
+          adjusted_minutes: mode === "subtract" ? -minutes : minutes,
+          adjusted_seconds: deltaSeconds,
+          total_seconds: nextAccumulatedSeconds
+        }
+      })
+      setTimerNotice({
+        type: "success",
+        message:
+          mode === "subtract"
+            ? `Subtracted ${minutes} minute(s) from time tracking.`
+            : `Added ${minutes} minute(s) to time tracking.`
+      })
+      setManualTimeMinutes("")
     }
 
     setTimerSaving(false)
@@ -3281,8 +3982,17 @@ export default function App() {
   async function runEmployeeCheckInAction(job, action) {
     if (!job) return
 
-    const actionLabel = CHECKIN_ACTIONS[action]
+    const actionLabel =
+      action === "COMPLETE_JOB" ? getCompleteActionLabel(job) : CHECKIN_ACTIONS[action]
     if (!actionLabel) return
+
+    if (action === "START_SHIFT" && !isAssignedToCurrentUser(job.assigned_to)) {
+      setEmployeeJobActionNotice({
+        type: "error",
+        message: "Only assigned employees can start the timer for this work order."
+      })
+      return
+    }
 
     const author = currentEmployeeName || session?.user?.email || "Employee"
     const nowIso = new Date().toISOString()
@@ -3300,7 +4010,23 @@ export default function App() {
       }
     }
 
+    if (action === "ARRIVE_ON_SITE") {
+      updates.status = "In Progress"
+      if (!isTimerRunning(job)) {
+        updates.timer_is_running = true
+        updates.timer_started_at = nowIso
+      }
+    }
+
     if (action === "LEAVE_SITE") {
+      updates.status = "In Progress"
+      if (!isTimerRunning(job)) {
+        updates.timer_is_running = true
+        updates.timer_started_at = nowIso
+      }
+    }
+
+    if (action === "END_SHIFT") {
       updates.status = "Paused"
       if (isTimerRunning(job)) {
         updates.timer_is_running = false
@@ -3310,7 +4036,7 @@ export default function App() {
     }
 
     if (action === "COMPLETE_JOB") {
-      updates.status = "Completed"
+      updates.status = "Work To Invoice"
       if (isTimerRunning(job)) {
         updates.timer_is_running = false
         updates.timer_started_at = null
@@ -3497,7 +4223,7 @@ export default function App() {
       <p><span class="label">Job #:</span> ${escapeHtml(job.job_number || "Not set")}</p>
       <p><span class="label">Status:</span> ${escapeHtml(job.status || "Not set")}</p>
       <p><span class="label">Assigned To:</span> ${escapeHtml(formatAssignees(job.assigned_to))}</p>
-      <p><span class="label">Scheduled Date:</span> ${escapeHtml(formatScheduledDate(job.scheduled_date))}</p>
+      <p><span class="label">Scheduled Date:</span> ${escapeHtml(formatWorkOrderScheduledDate(job))}</p>
       <p><span class="label">Phase:</span> ${escapeHtml(String(phaseInfo.currentPhase || 1))}</p>
       <p><span class="label">Created:</span> ${escapeHtml(formatDateTime(job.created_at))}</p>
       <p><span class="label">Updated:</span> ${escapeHtml(formatDateTime(job.updated_at))}</p>
@@ -3824,15 +4550,11 @@ export default function App() {
     const currentJob = jobs.find((job) => job.id === editingJobId) || null
     const nextStatus = String(editForm.status || "Scheduled").trim()
     const nextStatusNormalized = nextStatus.toLowerCase()
+    const currentScheduleMeta = parseWorkOrderScheduleMeta(currentJob?.notes)
     const timerUpdates = {}
 
     if (currentJob) {
       const runningNow = isTimerRunning(currentJob)
-
-      if (nextStatusNormalized === "in progress" && !runningNow) {
-        timerUpdates.timer_is_running = true
-        timerUpdates.timer_started_at = new Date().toISOString()
-      }
 
       if (nextStatusNormalized !== "in progress" && runningNow) {
         timerUpdates.timer_is_running = false
@@ -3843,12 +4565,16 @@ export default function App() {
 
     const expectedValues = {
       title: editForm.title.trim(),
+      job_number: editForm.job_number.trim() || null,
       job_description: editForm.job_description.trim() || null,
       location: editForm.location.trim() || null,
       assigned_to: serializeAssignees(editForm.assigned_to),
       scheduled_date: editForm.scheduled_date || null,
       status: nextStatus,
-      notes: editForm.notes.trim() || "",
+      notes: buildWorkOrderNotesValue(editForm.notes.trim() || "", currentJob?.notes || "", {
+        estimatedHours: currentScheduleMeta.estimatedHours,
+        scheduledEndDate: calculateScheduledEndDate(editForm.scheduled_date, currentScheduleMeta.estimatedHours)
+      }),
       ...timerUpdates
     }
 
@@ -3882,6 +4608,7 @@ export default function App() {
 
         const persisted =
           (refreshedJob.title || "") === (expectedValues.title || "") &&
+          (refreshedJob.job_number || null) === expectedValues.job_number &&
           (refreshedJob.job_description || null) === expectedValues.job_description &&
           (refreshedJob.location || null) === expectedValues.location &&
           sameAssignees(refreshedJob.assigned_to, expectedValues.assigned_to) &&
@@ -4041,6 +4768,7 @@ export default function App() {
     if (!title) return
 
     const normalizedTitle = title.trim()
+    const estimatedHours = normalizeEstimatedHours(createEstimatedHours)
     const usePhases = createPhasesEnabled && createPhaseRows.length > 0
 
     if (usePhases && assignedTo.length === 0) {
@@ -4068,7 +4796,7 @@ export default function App() {
     setLoading(true)
     setCreateDocsNotice({ type: "", message: "" })
 
-    const rootJobNumber = generateJobNumber()
+    const rootJobNumber = String(createJobNumber || "").trim() || generateJobNumber()
     const phaseDefinitions = usePhases
       ? [
           {
@@ -4076,7 +4804,10 @@ export default function App() {
             title: `${normalizedTitle} - Phase 1`,
             assignedTo: assignedTo,
             scheduledDate: scheduledDate || null,
-            notes: notes.trim() || ""
+            notes: buildWorkOrderNotesValue(notes.trim() || "", "", {
+              estimatedHours,
+              scheduledEndDate: calculateScheduledEndDate(scheduledDate, estimatedHours)
+            })
           },
           ...createPhaseRows.map((phase, index) => ({
             phaseNumber: index + 2,
@@ -4085,7 +4816,10 @@ export default function App() {
               `${normalizedTitle} - Phase ${index + 2}`,
             assignedTo: phase.assignees,
             scheduledDate: normalizeDateInput(phase.scheduledDate) || null,
-            notes: `Phase ${index + 2} of ${normalizedTitle}.`
+            notes: buildWorkOrderNotesValue(`Phase ${index + 2} of ${normalizedTitle}.`, "", {
+              estimatedHours: 0,
+              scheduledEndDate: ""
+            })
           }))
         ]
       : [
@@ -4094,7 +4828,10 @@ export default function App() {
             title: normalizedTitle,
             assignedTo: assignedTo,
             scheduledDate: scheduledDate || null,
-            notes: notes.trim() || ""
+            notes: buildWorkOrderNotesValue(notes.trim() || "", "", {
+              estimatedHours,
+              scheduledEndDate: calculateScheduledEndDate(scheduledDate, estimatedHours)
+            })
           }
         ]
 
@@ -4172,6 +4909,8 @@ export default function App() {
       setLocation("")
       setAssignedTo([])
       setScheduledDate("")
+      setCreateEstimatedHours("")
+      setCreateJobNumber("")
       setCreatePhasesEnabled(false)
       setCreatePhaseRows([])
       loadJobs()
@@ -4699,6 +5438,12 @@ export default function App() {
     if (aDateKey && !bDateKey) return -1
     if (!aDateKey && bDateKey) return 1
 
+    const aIsUnassigned = parseAssignees(a?.assigned_to).length === 0
+    const bIsUnassigned = parseAssignees(b?.assigned_to).length === 0
+    if (aIsUnassigned !== bIsUnassigned) {
+      return aIsUnassigned ? 1 : -1
+    }
+
     const aCreated = new Date(a?.created_at || 0).getTime()
     const bCreated = new Date(b?.created_at || 0).getTime()
     if (aCreated !== bCreated) return aCreated - bCreated
@@ -4803,22 +5548,79 @@ export default function App() {
   const selectedJobNoteEntries = parseUserNoteEntries(selectedJob?.notes)
   const selectedJobNoteEntriesNewestFirst = [...selectedJobNoteEntries].reverse()
   const selectedJobMapLinks = selectedJob ? buildMapLinks(selectedJob.location) : null
+  const getCompleteActionLabel = (job) => {
+    if (!job) return CHECKIN_ACTIONS.COMPLETE_JOB
+
+    const phaseInfo = getJobPhaseInfo(job)
+    const phaseCount = jobs.filter(
+      (item) => getJobPhaseInfo(item).rootJobNumber === phaseInfo.rootJobNumber
+    ).length
+
+    return phaseCount > 1 ? "Phase Complete/Send To Invoice" : CHECKIN_ACTIONS.COMPLETE_JOB
+  }
+  const selectedJobHeaderActionLabel = (() => {
+    if (!selectedJob) return "Timer"
+
+    const checkInLabelByAction = {
+      START_SHIFT: "Travel To Job",
+      ARRIVE_ON_SITE: "Arrive On Site",
+      LEAVE_SITE: "Leave Site",
+      END_SHIFT: "Returned To Shop / End Shift",
+      COMPLETE_JOB: getCompleteActionLabel(selectedJob)
+    }
+
+    const latestCheckIn = Object.entries(checkInLabelByAction)
+      .map(([action, label]) => {
+        const timestamp = selectedJobCheckInEvents[action]
+        const millis = Date.parse(String(timestamp || ""))
+
+        return {
+          label,
+          millis: Number.isFinite(millis) ? millis : -1
+        }
+      })
+      .filter((entry) => entry.millis >= 0)
+      .sort((a, b) => b.millis - a.millis)[0]
+
+    if (latestCheckIn) return latestCheckIn.label
+
+    const status = String(selectedJob.status || "").trim().toLowerCase()
+    if (status === "paused") return "Pause Job"
+    if (status === "pending invoice" || status === "work to invoice") return getCompleteActionLabel(selectedJob)
+    if (status === "completed") return "Completed"
+    if (status === "on hold") return "On Hold"
+
+    return "Travel To Job"
+  })()
   const selectedJobElapsedSeconds = selectedJob
     ? getElapsedSeconds(selectedJob, clockNow)
     : 0
   const selectedJobBillableHours = (selectedJobElapsedSeconds / 3600).toFixed(2)
+  const createScheduleRangePreview =
+    scheduledDate && normalizeEstimatedHours(createEstimatedHours) > 0
+      ? formatWorkOrderScheduledDate({
+          scheduled_date: scheduledDate,
+          notes: buildWorkOrderNotesValue("", "", {
+            estimatedHours: createEstimatedHours,
+            scheduledEndDate: calculateScheduledEndDate(scheduledDate, createEstimatedHours)
+          })
+        })
+      : formatScheduledDate(scheduledDate)
 
   const calendarVisibleDays = calendarRange === "week" ? 7 : 30
 
   const jobsByDateKey = visibleActiveJobs.reduce((acc, job) => {
-    const dateKey = normalizeDateInput(job.scheduled_date)
-    if (!dateKey) return acc
+    const dateKeys = getWorkOrderScheduleDateKeys(job)
+    if (dateKeys.length === 0) return acc
 
-    if (!acc[dateKey]) {
-      acc[dateKey] = []
-    }
+    dateKeys.forEach((dateKey) => {
+      if (!acc[dateKey]) {
+        acc[dateKey] = []
+      }
 
-    acc[dateKey].push(job)
+      acc[dateKey].push(job)
+    })
+
     return acc
   }, {})
 
@@ -4864,9 +5666,13 @@ export default function App() {
   const todayDateKey = getLocalDateKey(new Date())
 
   const employeeRequestStatusByDate = timeOffRequests.reduce((acc, request) => {
-    const key = normalizeDateInput(request.request_date)
-    if (!key) return acc
-    acc[key] = String(request.status || "Pending")
+    const status = String(request.status || "Pending")
+    if (status !== "Pending") return acc
+
+    getTimeOffRequestDateKeys(request).forEach((key) => {
+      acc[key] = status
+    })
+
     return acc
   }, {})
 
@@ -4877,8 +5683,51 @@ export default function App() {
           String(request.employee_email || "").toLowerCase() === signedInEmail &&
           normalizeDateInput(request.request_date)
       )
-      .map((request) => normalizeDateInput(request.request_date))
+      .flatMap((request) => getTimeOffRequestDateKeys(request))
   )
+
+  const adminTimeOffByDate = approvedTimeOffRequests.reduce((acc, request) => {
+    const employeeName = request.employee_name || request.employee_email || "Employee"
+    getTimeOffRequestDateKeys(request).forEach((dateKey) => {
+      if (!acc[dateKey]) {
+        acc[dateKey] = []
+      }
+
+      if (!acc[dateKey].includes(employeeName)) {
+        acc[dateKey].push(employeeName)
+      }
+    })
+
+    return acc
+  }, {})
+
+  const pendingAdminTimeOffRequestCount = adminTimeOffRequests.filter(
+    (request) => String(request.status || "Pending") === "Pending"
+  ).length
+
+  const visibleCalendarNotes = calendarNotes.filter((note) =>
+    appRole === "admin"
+      ? true
+      : normalizeEmployeeEmail(note.employee_email) === signedInEmail
+  )
+
+  const calendarNotesByDate = visibleCalendarNotes.reduce((acc, note) => {
+    const dateKey = normalizeDateInput(note.request_date)
+    if (!dateKey) return acc
+
+    if (!acc[dateKey]) {
+      acc[dateKey] = []
+    }
+
+    const details = parseTimeOffReasonDetails(note.reason)
+    acc[dateKey].push({
+      id: note.id,
+      employeeName: note.employee_name || note.employee_email || "Employee",
+      text: details.displayReason || "Note"
+    })
+
+    return acc
+  }, {})
 
   const selectedCalendarDateJobs = selectedCalendarDateKey
     ? jobsByDateKey[selectedCalendarDateKey] || []
@@ -4887,7 +5736,7 @@ export default function App() {
   const availableJobsForCalendarDate = selectedCalendarDateKey
     ? visibleActiveJobs.filter(
         (job) => {
-          if (normalizeDateInput(job.scheduled_date) === selectedCalendarDateKey) return false
+          if (getWorkOrderScheduleDateKeys(job).includes(selectedCalendarDateKey)) return false
 
           const unavailableAssignees = parseAssignees(job.assigned_to).filter((name) =>
             isEmployeeUnavailableOnDate(name, selectedCalendarDateKey)
@@ -4895,8 +5744,17 @@ export default function App() {
 
           return unavailableAssignees.length === 0
         }
-      )
+      ).sort((a, b) => {
+        const aUnassigned = parseAssignees(a.assigned_to).length === 0
+        const bUnassigned = parseAssignees(b.assigned_to).length === 0
+        if (aUnassigned !== bUnassigned) return aUnassigned ? 1 : -1
+        return compareJobsByScheduledDate(a, b)
+      })
     : []
+
+  const unassignedCalendarPoolJobs = visibleActiveJobs
+    .filter((job) => !normalizeDateInput(job.scheduled_date))
+    .sort(compareJobsByScheduledDate)
 
   const selectedCalendarDateLabel = selectedCalendarDateKey
     ? new Date(`${selectedCalendarDateKey}T00:00:00`).toLocaleDateString(undefined, {
@@ -4956,7 +5814,7 @@ export default function App() {
 
   const mapDayJobs = jobsSortedBySchedule.filter(
     (job) =>
-      normalizeDateInput(job.scheduled_date) === mapDate &&
+      getWorkOrderScheduleDateKeys(job).includes(mapDate) &&
       String(job.status || "").trim().toLowerCase() !== "completed"
   )
 
@@ -5175,7 +6033,7 @@ export default function App() {
   const dispatchLaneKeys =
     dispatchBoardMode === "status"
       ? DISPATCH_STATUS_LANES
-      : ["__unassigned__", ...assignableEmployeeNames]
+      : [...assignableEmployeeNames, "__unassigned__"]
 
   const dispatchJobsByLane = dispatchLaneKeys.reduce((acc, laneKey) => {
     acc[laneKey] = []
@@ -5185,9 +6043,10 @@ export default function App() {
   jobsSortedBySchedule.forEach((job) => {
     if (dispatchBoardMode === "status") {
       const normalizedStatus = String(job.status || "Scheduled").trim().toLowerCase()
+      const laneStatus = normalizedStatus === "pending invoice" ? "work to invoice" : normalizedStatus
       const lane =
         DISPATCH_STATUS_LANES.find(
-          (candidate) => candidate.toLowerCase() === normalizedStatus
+          (candidate) => candidate.toLowerCase() === laneStatus
         ) || "Scheduled"
 
       dispatchJobsByLane[lane].push(job)
@@ -5319,9 +6178,44 @@ export default function App() {
       ? "dashboard"
       : viewMode
 
+  const adminTimeOffRequestNotifications =
+    appRole === "admin"
+      ? adminTimeOffRequests
+          .filter((request) => String(request.status || "Pending") === "Pending")
+          .map((request) => {
+            const details = parseTimeOffReasonDetails(request.reason)
+            const rangeLabel = formatTimeOffRequestDateRange(request)
+            const requester = request.employee_name || request.employee_email || "Employee"
+
+            return {
+              id: `timeoff-request-${request.id}`,
+              work_order_id: null,
+              event_type: "time_off_requested",
+              event_label: `Time-off requested: ${requester} | ${details.type || "Day Off"} | ${rangeLabel}`,
+              created_at: request.created_at || request.updated_at || request.request_date || null,
+              actor_name: requester,
+              metadata: {
+                employee_name: request.employee_name || null,
+                employee_email: request.employee_email || null,
+                request_type: details.type || "Day Off",
+                from: details.startDate || normalizeDateInput(request.request_date) || null,
+                to:
+                  details.endDate || details.startDate || normalizeDateInput(request.request_date) || null
+              }
+            }
+          })
+      : []
+
+  const adminNotificationFeed =
+    appRole === "admin"
+      ? [...adminNotifications, ...adminTimeOffRequestNotifications].sort(
+          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        )
+      : []
+
   const adminUnreadNotifications =
     appRole === "admin"
-      ? adminNotifications.filter((event) => !openedAdminNotificationIds.includes(event.id))
+      ? adminNotificationFeed.filter((event) => !openedAdminNotificationIds.includes(event.id))
       : 0
 
   const adminNotificationUnreadCount =
@@ -5470,7 +6364,7 @@ export default function App() {
                       <button
                         type="button"
                         className="ghost-btn"
-                        onClick={() => markAllAdminNotificationsAsRead(adminNotifications)}
+                        onClick={() => markAllAdminNotificationsAsRead(adminNotificationFeed)}
                         disabled={adminUnreadNotifications.length === 0}
                       >
                         Mark all read
@@ -5518,7 +6412,9 @@ export default function App() {
                               <p className="events-list-meta">
                                 {relatedJob?.title
                                   ? `Work order: ${relatedJob.title}`
-                                  : "Work order update"}
+                                  : event.event_type === "time_off_requested"
+                                    ? "Time-off request"
+                                    : "Work order update"}
                               </p>
                               <p className="events-list-meta">
                                 {formatDateTime(event.created_at)}
@@ -5796,7 +6692,7 @@ export default function App() {
                 <input
                   className="completed-search"
                   type="search"
-                  placeholder="Search work orders"
+                  placeholder="Search by title, job #, assignee, notes"
                   value={homeSearch}
                   onChange={(e) => setHomeSearch(e.target.value)}
                 />
@@ -5830,7 +6726,7 @@ export default function App() {
                         <p>Job #: {job.job_number}</p>
                         <p>Description: {job.job_description || "None"}</p>
                         <p>Assigned to: {formatAssignees(job.assigned_to)}</p>
-                        <p>Scheduled date: {formatScheduledDate(job.scheduled_date)}</p>
+                        <p>Scheduled date: {formatWorkOrderScheduledDate(job)}</p>
                         <p>Phase: {phaseInfo.currentPhase}</p>
                         {checkInEvents.ARRIVE_ON_SITE ? (
                           <p>Arrived on site: {formatDateTime(checkInEvents.ARRIVE_ON_SITE)}</p>
@@ -5879,6 +6775,12 @@ export default function App() {
                   </button>
                 ) : null}
               </div>
+
+              <input
+                placeholder="Job # / Invoice # (optional)"
+                value={createJobNumber}
+                onChange={(e) => setCreateJobNumber(e.target.value)}
+              />
 
               <input
                 placeholder="Well Number Or Job Title"
@@ -5984,6 +6886,26 @@ export default function App() {
                 value={scheduledDate}
                 onChange={(e) => setScheduledDate(e.target.value)}
               />
+
+              <div className="assignee-picker create-estimate-panel">
+                <p className="assignee-label">Estimated Time</p>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder="Estimated hours"
+                  value={createEstimatedHours}
+                  onChange={(e) => setCreateEstimatedHours(e.target.value)}
+                />
+                <p className="subtle-text create-estimate-help">
+                  8 hours per workday. Over 8 hours stretches across weekdays and skips Saturday/Sunday.
+                </p>
+                {scheduledDate ? (
+                  <p className="subtle-text create-estimate-help">
+                    Schedule Range: {createScheduleRangePreview || "Not set"}
+                  </p>
+                ) : null}
+              </div>
 
               <div className="assignee-picker phase-builder-panel">
                 <div className="phase-builder-head">
@@ -6177,7 +7099,7 @@ export default function App() {
                           </button>
 
                           <p className="dispatch-card-meta">
-                            Scheduled: {formatScheduledDate(job.scheduled_date)}
+                            Scheduled: {formatWorkOrderScheduledDate(job)}
                           </p>
                           <p className="dispatch-card-meta">Assigned: {formatAssignees(job.assigned_to)}</p>
                           {dispatchBoardMode === "assignee" ? (
@@ -6764,7 +7686,7 @@ export default function App() {
                           </span>
                         </div>
                         <p>Job #: {job.job_number || "Not set"}</p>
-                        <p>Scheduled date: {formatScheduledDate(job.scheduled_date)}</p>
+                        <p>Scheduled date: {formatWorkOrderScheduledDate(job)}</p>
                         <p className="open-hint">Click to open work order</p>
                       </article>
                     ))}
@@ -6900,6 +7822,18 @@ export default function App() {
               </div>
             </div>
 
+            {calendarAssignNotice.message ? (
+              <p
+                className={`notice-text ${
+                  calendarAssignNotice.type === "error"
+                    ? "notice-text--error"
+                    : "notice-text--success"
+                }`}
+              >
+                {calendarAssignNotice.message}
+              </p>
+            ) : null}
+
             {appRole === "employee" ? (
               <div className="timeoff-panel">
                 <div className="timeoff-panel-head">
@@ -6933,12 +7867,24 @@ export default function App() {
                     </div>
 
                     <div className="timeoff-form">
+                      <label className="timeoff-date-field">
+                        From
+                        <input
+                          type="date"
+                          value={timeOffDate || selectedCalendarDateKey}
+                          onChange={(e) => setTimeOffDate(e.target.value)}
+                        />
+                      </label>
+                      <label className="timeoff-date-field">
+                        To
+                        <input
+                          type="date"
+                          value={timeOffEndDate || timeOffDate || selectedCalendarDateKey}
+                          onChange={(e) => setTimeOffEndDate(e.target.value)}
+                        />
+                      </label>
                       <input
-                        type="date"
-                        value={timeOffDate || selectedCalendarDateKey}
-                        onChange={(e) => setTimeOffDate(e.target.value)}
-                      />
-                      <input
+                        className="timeoff-reason-input"
                         placeholder="Reason (optional)"
                         value={timeOffReason}
                         onChange={(e) => setTimeOffReason(e.target.value)}
@@ -6959,7 +7905,7 @@ export default function App() {
                       ) : null}
                       <button
                         type="button"
-                        className="primary-btn"
+                        className="primary-btn timeoff-submit-btn"
                         onClick={submitTimeOffRequest}
                         disabled={timeOffSaving}
                       >
@@ -6985,7 +7931,7 @@ export default function App() {
                   <ul className="timeoff-list">
                     {timeOffRequests.slice(0, 6).map((request) => (
                       <li key={request.id}>
-                        <span>{normalizeDateInput(request.request_date)}</span>
+                        <span>{formatTimeOffRequestDateRange(request)}</span>
                         <span className="timeoff-status">{request.status || "Pending"}</span>
                       </li>
                     ))}
@@ -6994,79 +7940,143 @@ export default function App() {
               </div>
             ) : (
               <div className="timeoff-panel">
-                <h3>Time-Off Requests</h3>
-                {timeOffNotice.message ? (
-                  <p
-                    className={`notice-text ${
-                      timeOffNotice.type === "error" ? "notice-text--error" : "notice-text--success"
-                    }`}
+                <div className="timeoff-panel-head">
+                  <h3>Time-Off Requests</h3>
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => setShowAdminTimeOffPanel((current) => !current)}
                   >
-                    {timeOffNotice.message}
-                  </p>
-                ) : null}
+                    {showAdminTimeOffPanel
+                      ? "Close"
+                      : pendingAdminTimeOffRequestCount > 0
+                        ? `Time Off Requests (${pendingAdminTimeOffRequestCount})`
+                        : "Time Off Requests"}
+                  </button>
+                </div>
 
-                {adminTimeOffLoading ? <p>Loading requests...</p> : null}
+                {showAdminTimeOffPanel ? (
+                  <>
+                    <div className="admin-timeoff-form">
+                      <select
+                        value={adminTimeOffEmployeeEmail}
+                        onChange={(e) => setAdminTimeOffEmployeeEmail(e.target.value)}
+                      >
+                        <option value="">Employee</option>
+                        {employees
+                          .filter((employee) => normalizeEmployeeEmail(employee.email))
+                          .map((employee) => (
+                            <option key={`admin-timeoff-${employee.id || employee.email}`} value={normalizeEmployeeEmail(employee.email)}>
+                              {employee.name || employee.email}
+                            </option>
+                          ))}
+                      </select>
+                      <label className="timeoff-date-field">
+                        From
+                        <input
+                          type="date"
+                          value={adminTimeOffDate || selectedCalendarDateKey}
+                          onChange={(e) => setAdminTimeOffDate(e.target.value)}
+                        />
+                      </label>
+                      <label className="timeoff-date-field">
+                        To
+                        <input
+                          type="date"
+                          value={adminTimeOffEndDate || adminTimeOffDate || selectedCalendarDateKey}
+                          onChange={(e) => setAdminTimeOffEndDate(e.target.value)}
+                        />
+                      </label>
+                      <input
+                        className="timeoff-reason-input"
+                        placeholder="Reason (optional)"
+                        value={adminTimeOffReason}
+                        onChange={(e) => setAdminTimeOffReason(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="primary-btn timeoff-submit-btn"
+                        onClick={submitAdminTimeOffRequest}
+                        disabled={adminTimeOffSaving}
+                      >
+                        {adminTimeOffSaving ? "Saving..." : "Add Time Off"}
+                      </button>
+                    </div>
 
-                {!adminTimeOffLoading && adminTimeOffRequests.length === 0 ? (
-                  <p className="empty-text">No time-off requests.</p>
-                ) : null}
+                    {timeOffNotice.message ? (
+                      <p
+                        className={`notice-text ${
+                          timeOffNotice.type === "error" ? "notice-text--error" : "notice-text--success"
+                        }`}
+                      >
+                        {timeOffNotice.message}
+                      </p>
+                    ) : null}
 
-                {!adminTimeOffLoading && adminTimeOffRequests.length > 0 ? (
-                  <ul className="timeoff-list">
-                    {adminTimeOffRequests.slice(0, 12).map((request) => (
-                      <li key={request.id}>
-                        {(() => {
-                          const details = parseTimeOffReasonDetails(request.reason)
+                    {adminTimeOffLoading ? <p>Loading requests...</p> : null}
 
-                          return (
-                            <>
-                        <div>
-                          <p className="timeoff-list-name">{request.employee_name || request.employee_email}</p>
-                          <p className="timeoff-list-meta">
-                            {normalizeDateInput(request.request_date)}
-                            {details.displayReason ? ` - ${details.displayReason}` : ""}
-                          </p>
-                          <p className="timeoff-list-meta">Type: {details.type || "Day Off"}</p>
-                        </div>
-                        <div className="timeoff-actions">
-                          <span className="timeoff-status">{request.status || "Pending"}</span>
-                          {details.doctorNotePath ? (
-                            <button
-                              className="ghost-btn"
-                              type="button"
-                              onClick={() => openTimeOffDoctorNote(details.doctorNotePath, request.id)}
-                              disabled={openingDoctorNoteId === request.id}
-                            >
-                              {openingDoctorNoteId === request.id ? "Opening..." : "Doctor Note"}
-                            </button>
-                          ) : null}
-                          {request.status !== "Approved" ? (
-                            <button
-                              className="ghost-btn"
-                              type="button"
-                              onClick={() => updateTimeOffRequestStatus(request.id, "Approved")}
-                              disabled={timeOffActionId === request.id}
-                            >
-                              Approve
-                            </button>
-                          ) : null}
-                          {request.status !== "Denied" ? (
-                            <button
-                              className="ghost-btn"
-                              type="button"
-                              onClick={() => updateTimeOffRequestStatus(request.id, "Denied")}
-                              disabled={timeOffActionId === request.id}
-                            >
-                              Deny
-                            </button>
-                          ) : null}
-                        </div>
-                            </>
-                          )
-                        })()}
-                      </li>
-                    ))}
-                  </ul>
+                    {!adminTimeOffLoading && adminTimeOffRequests.length === 0 ? (
+                      <p className="empty-text">No time-off requests.</p>
+                    ) : null}
+
+                    {!adminTimeOffLoading && adminTimeOffRequests.length > 0 ? (
+                      <ul className="timeoff-list">
+                        {adminTimeOffRequests.slice(0, 12).map((request) => (
+                          <li key={request.id}>
+                            {(() => {
+                              const details = parseTimeOffReasonDetails(request.reason)
+
+                              return (
+                                <>
+                            <div>
+                              <p className="timeoff-list-name">{request.employee_name || request.employee_email}</p>
+                              <p className="timeoff-list-meta">
+                                {formatTimeOffRequestDateRange(request)}
+                                {details.displayReason ? ` - ${details.displayReason}` : ""}
+                              </p>
+                              <p className="timeoff-list-meta">Type: {details.type || "Day Off"}</p>
+                            </div>
+                            <div className="timeoff-actions">
+                              <span className="timeoff-status">{request.status || "Pending"}</span>
+                              {details.doctorNotePath ? (
+                                <button
+                                  className="ghost-btn"
+                                  type="button"
+                                  onClick={() => openTimeOffDoctorNote(details.doctorNotePath, request.id)}
+                                  disabled={openingDoctorNoteId === request.id}
+                                >
+                                  {openingDoctorNoteId === request.id ? "Opening..." : "Doctor Note"}
+                                </button>
+                              ) : null}
+                              {request.status !== "Approved" ? (
+                                <button
+                                  className="ghost-btn"
+                                  type="button"
+                                  onClick={() => updateTimeOffRequestStatus(request.id, "Approved")}
+                                  disabled={timeOffActionId === request.id}
+                                >
+                                  Approve
+                                </button>
+                              ) : null}
+                              {request.status !== "Denied" ? (
+                                <button
+                                  className="ghost-btn"
+                                  type="button"
+                                  onClick={() => updateTimeOffRequestStatus(request.id, "Denied")}
+                                  disabled={timeOffActionId === request.id}
+                                >
+                                  Deny
+                                </button>
+                              ) : null}
+                            </div>
+                                </>
+                              )
+                            })()}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
             )}
@@ -7081,7 +8091,8 @@ export default function App() {
                       ? "calendar-day-card--selected"
                       : ""
                   } ${
-                    appRole === "employee" && employeeApprovedDateSet.has(cell.dateKey)
+                    ((appRole === "employee" && employeeApprovedDateSet.has(cell.dateKey)) ||
+                      (appRole === "admin" && (adminTimeOffByDate[cell.dateKey] || []).length > 0))
                       ? "calendar-day-card--timeoff-approved"
                       : ""
                   } ${
@@ -7090,12 +8101,23 @@ export default function App() {
                       : ""
                   } ${cell.dateKey === todayDateKey ? "calendar-day-card--today" : ""}`}
                   onClick={() => selectCalendarDate(cell.dateKey)}
+                  onDragOver={(e) => {
+                    if (appRole !== "admin" || !calendarDragJobId) return
+                    e.preventDefault()
+                  }}
+                  onDrop={async (e) => {
+                    if (appRole !== "admin" || !calendarDragJobId) return
+                    e.preventDefault()
+                    await dropUnassignedJobOnCalendarDate(cell.dateKey)
+                  }}
                 >
                   <div className="calendar-day-head">
                     <strong>{cell.shortDateLabel}</strong>
                     <span>
                       {appRole === "employee" && employeeApprovedDateSet.has(cell.dateKey)
                         ? "Unavailable"
+                        : appRole === "admin" && (adminTimeOffByDate[cell.dateKey] || []).length > 0
+                          ? `${(adminTimeOffByDate[cell.dateKey] || []).length} off`
                         : appRole === "employee" && employeeRequestStatusByDate[cell.dateKey] === "Pending"
                           ? "Pending PTO"
                           : `${cell.jobs.length} jobs`}
@@ -7110,10 +8132,20 @@ export default function App() {
                         <button
                           key={job.id}
                           type="button"
+                          draggable={appRole === "admin"}
                           className="calendar-job-chip"
                           onClick={(e) => {
                             e.stopPropagation()
                             openJobDetails(job.id)
+                          }}
+                          onDragStart={(e) => {
+                            if (appRole !== "admin") return
+                            e.stopPropagation()
+                            setCalendarDragJobId(job.id)
+                          }}
+                          onDragEnd={() => {
+                            if (appRole !== "admin") return
+                            setCalendarDragJobId("")
                           }}
                         >
                           {job.title}
@@ -7125,51 +8157,149 @@ export default function App() {
                     </div>
                   )}
 
-                  {selectedCalendarDateKey === cell.dateKey && appRole === "admin" ? (
-                    <div className="calendar-day-expand" onClick={(e) => e.stopPropagation()}>
-                      <h4>Assign to this date</h4>
-                      {calendarAssignNotice.message ? (
-                        <p
-                          className={`notice-text ${
-                            calendarAssignNotice.type === "error"
-                              ? "notice-text--error"
-                              : "notice-text--success"
-                          }`}
-                        >
-                          {calendarAssignNotice.message}
+                  {(appRole === "employee" && employeeApprovedDateSet.has(cell.dateKey)) ||
+                  (appRole === "admin" && (adminTimeOffByDate[cell.dateKey] || []).length > 0) ? (
+                    <div className="calendar-timeoff-list">
+                      {(appRole === "admin"
+                        ? adminTimeOffByDate[cell.dateKey] || []
+                        : [currentEmployeeName || "Employee"]
+                      ).slice(0, selectedCalendarDateKey === cell.dateKey ? 6 : 2).map((name) => (
+                        <p key={`timeoff-${cell.dateKey}-${name}`} className="calendar-timeoff-chip">
+                          {name} Time Off
                         </p>
-                      ) : null}
+                      ))}
+                    </div>
+                  ) : null}
 
-                      <div className="calendar-assign-controls">
-                        <select
-                          value={calendarAssignJobId}
-                          onChange={(e) => setCalendarAssignJobId(e.target.value)}
-                        >
-                          <option value="">Select work order</option>
-                          {availableJobsForCalendarDate
-                            .filter((job) => normalizeDateInput(job.scheduled_date) !== cell.dateKey)
-                            .map((job) => (
-                              <option key={job.id} value={job.id}>
-                                {formatJobOptionLabel(job)}
-                              </option>
-                            ))}
-                        </select>
+                  {(calendarNotesByDate[cell.dateKey] || []).length > 0 ? (
+                    <div className="calendar-note-list">
+                      {(calendarNotesByDate[cell.dateKey] || [])
+                        .slice(0, selectedCalendarDateKey === cell.dateKey ? 6 : 2)
+                        .map((note) => (
+                          <p key={`calendar-note-${note.id}`} className="calendar-note-chip">
+                            {appRole === "admin" ? `${note.employeeName}: ${note.text}` : note.text}
+                          </p>
+                        ))}
+                    </div>
+                  ) : null}
+
+                  {selectedCalendarDateKey === cell.dateKey ? (
+                    <div className="calendar-day-expand" onClick={(e) => e.stopPropagation()}>
+                      <div className="calendar-day-actions">
+                        {appRole === "admin" ? (
+                          <button
+                            type="button"
+                            className="ghost-btn calendar-day-action-btn"
+                            onClick={() => openCreateViewForDate(cell.dateKey)}
+                          >
+                            Create Work Order +
+                          </button>
+                        ) : null}
 
                         <button
                           type="button"
-                          className="primary-btn"
-                          disabled={!calendarAssignJobId || calendarAssigning}
-                          onClick={assignWorkOrderToCalendarDate}
+                          className="ghost-btn calendar-day-action-btn"
+                          onClick={() =>
+                            setCalendarNoteMenuDate((current) =>
+                              current === cell.dateKey ? "" : cell.dateKey
+                            )
+                          }
                         >
-                          {calendarAssigning ? "Assigning..." : "Assign"}
+                          Note +
                         </button>
                       </div>
+
+                      {calendarNoteMenuDate === cell.dateKey ? (
+                        <>
+                          {calendarNoteNotice.message ? (
+                            <p
+                              className={`notice-text ${
+                                calendarNoteNotice.type === "error"
+                                  ? "notice-text--error"
+                                  : "notice-text--success"
+                              }`}
+                            >
+                              {calendarNoteNotice.message}
+                            </p>
+                          ) : null}
+
+                          <div className="calendar-note-editor">
+                            {appRole === "admin" ? (
+                              <select
+                                value={calendarNoteEmployeeEmail}
+                                onChange={(e) => setCalendarNoteEmployeeEmail(e.target.value)}
+                              >
+                                <option value="">Employee</option>
+                                {employees
+                                  .filter((employee) => normalizeEmployeeEmail(employee.email))
+                                  .map((employee) => (
+                                    <option key={`calendar-note-target-${employee.id || employee.email}`} value={normalizeEmployeeEmail(employee.email)}>
+                                      {employee.name || employee.email}
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : null}
+                            <input
+                              value={calendarNoteText}
+                              onChange={(e) => setCalendarNoteText(e.target.value)}
+                              placeholder="Add note for this date"
+                            />
+                            <button
+                              type="button"
+                              className="primary-btn"
+                              onClick={submitCalendarNote}
+                              disabled={calendarNoteSaving}
+                            >
+                              {calendarNoteSaving ? "Saving..." : "Add Note"}
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   ) : null}
                 </article>
               )}
               </div>
             </div>
+
+            {appRole === "admin" ? (
+              <div className="calendar-unassigned-pool">
+                <div className="calendar-unassigned-pool-head">
+                  <h3>Unassigned Work Orders</h3>
+                  <p className="subtle-text">Drag onto a date card to schedule.</p>
+                </div>
+
+                {unassignedCalendarPoolJobs.length === 0 ? (
+                  <p className="empty-text">No unassigned work orders.</p>
+                ) : (
+                  <div
+                    className="calendar-unassigned-pool-list"
+                    onDragOver={(e) => {
+                      if (appRole !== "admin" || !calendarDragJobId) return
+                      e.preventDefault()
+                    }}
+                    onDrop={async (e) => {
+                      if (appRole !== "admin" || !calendarDragJobId) return
+                      e.preventDefault()
+                      await unassignWorkOrderFromCalendarDate()
+                    }}
+                  >
+                    {unassignedCalendarPoolJobs.map((job) => (
+                      <button
+                        key={`calendar-unassigned-${job.id}`}
+                        type="button"
+                        draggable
+                        className="calendar-unassigned-chip"
+                        onDragStart={() => setCalendarDragJobId(job.id)}
+                        onDragEnd={() => setCalendarDragJobId("")}
+                      >
+                        {formatJobOptionLabel(job)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </section>
         </main>
       ) : effectiveViewMode === "completed" ? (
@@ -7180,7 +8310,7 @@ export default function App() {
               <input
                 className="completed-search"
                 type="search"
-                placeholder="Search completed work orders"
+                placeholder="Search by title, job #, assignee, notes"
                 value={completedSearch}
                 onChange={(e) => setCompletedSearch(e.target.value)}
               />
@@ -7219,7 +8349,7 @@ export default function App() {
                     <p>Job #: {job.job_number}</p>
                     <p>Description: {job.job_description || "None"}</p>
                     <p>Assigned to: {formatAssignees(job.assigned_to)}</p>
-                    <p>Scheduled date: {formatScheduledDate(job.scheduled_date)}</p>
+                    <p>Scheduled date: {formatWorkOrderScheduledDate(job)}</p>
                     <p>Phase: {phaseInfo.currentPhase}</p>
                     <div className="employee-manage-actions">
                       <button
@@ -7437,39 +8567,15 @@ export default function App() {
           {selectedJob ? (
             <section className="job-details-panel">
               <div className="job-details-head">
-                <h3>Work Order Details</h3>
-                {canManageJobs && editingJobId === selectedJob.id ? (
-                  <div className="job-details-actions">
-                    <button className="ghost-btn" onClick={cancelEditing} disabled={savingEdit}>
-                      Cancel
-                    </button>
-                    <button className="primary-btn" onClick={saveEditedJob} disabled={savingEdit}>
-                      {savingEdit ? "Saving..." : "Save Changes"}
-                    </button>
-                    <button
-                      className="ghost-btn job-delete-btn"
-                      onClick={() => deleteSelectedWorkOrder(selectedJob, canManageJobs)}
-                      disabled={savingEdit || deletingJob}
-                    >
-                      {deletingJob ? "Deleting..." : "Delete Work Order"}
-                    </button>
-                  </div>
-                ) : canManageJobs ? (
-                  <div className="job-details-actions">
-                    <button
-                      className="primary-btn"
-                      onClick={() => startEditing(selectedJob)}
-                    >
-                      Edit Work Order
-                    </button>
-                    <button
-                      className="ghost-btn job-delete-btn"
-                      onClick={() => deleteSelectedWorkOrder(selectedJob, canManageJobs)}
-                      disabled={deletingJob}
-                    >
-                      {deletingJob ? "Deleting..." : "Delete Work Order"}
-                    </button>
-                  </div>
+                <h3>{isEmployeeDetailsSimpleView ? (selectedJob.title || "Work Order Details") : "Work Order Details"}</h3>
+                {isEmployeeDetailsSimpleView ? (
+                  <p className="job-details-head-timer">
+                    <span>{selectedJobHeaderActionLabel}</span>
+                    <strong>{formatDuration(selectedJobElapsedSeconds)}</strong>
+                  </p>
+                ) : null}
+                {!isEmployeeDetailsSimpleView ? (
+                  <p className="subtle-text">Work orders are only complete after invoicing is done.</p>
                 ) : null}
               </div>
 
@@ -7483,144 +8589,92 @@ export default function App() {
                 </p>
               ) : null}
 
-              <div className="timer-panel">
-                <p className="timer-heading">Time Tracking</p>
-                <p className="timer-value">{formatDuration(selectedJobElapsedSeconds)}</p>
-                <p className="timer-hours">Billable hours: {selectedJobBillableHours}</p>
-                {canControlTimer && canManageJobs ? (
-                  <div className="timer-actions">
-                    {isTimerRunning(selectedJob) ? (
-                      <button
-                        className="ghost-btn"
-                        type="button"
-                        onClick={() => pauseTimerForJob(selectedJob)}
-                        disabled={timerSaving}
-                      >
-                        {timerSaving ? "Saving..." : appRole === "employee" ? "Pause Job" : "Pause"}
-                      </button>
-                    ) : (
-                      <button
-                        className="primary-btn"
-                        type="button"
-                        onClick={() => startTimerForJob(selectedJob)}
-                        disabled={timerSaving}
-                      >
-                        {timerSaving ? "Saving..." : appRole === "employee" ? "Start Job" : "Start"}
-                      </button>
-                    )}
-                    {canManageJobs ? (
-                      <button
-                        className="ghost-btn"
-                        type="button"
-                        onClick={() => resetTimerForJob(selectedJob)}
-                        disabled={timerSaving}
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {timerNotice.message ? (
-                  <p
-                    className={`notice-text ${
-                      timerNotice.type === "error"
-                        ? "notice-text--error"
-                        : "notice-text--success"
-                    }`}
-                  >
-                    {timerNotice.message}
-                  </p>
-                ) : null}
-              </div>
-
-              {appRole === "employee" ? (
-                <div className="employee-checkin-panel employee-checkin-panel--top">
-                  <h4>Job Actions</h4>
-                  <div className="employee-checkin-actions employee-checkin-actions--top">
-                    <button
-                      type="button"
-                      className="primary-btn employee-top-action-btn"
-                      onClick={() => handleEmployeeTravelToJob(selectedJob)}
-                      disabled={employeeJobActionSaving || timerSaving}
-                    >
-                      Travel To Job
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-btn employee-top-action-btn"
-                      onClick={() => runEmployeeCheckInAction(selectedJob, "ARRIVE_ON_SITE")}
-                      disabled={employeeJobActionSaving}
-                    >
-                      Arrive On Site
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-btn employee-top-action-btn"
-                      onClick={() => pauseTimerForJob(selectedJob)}
-                      disabled={timerSaving}
-                    >
-                      Pause Job
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-btn employee-top-action-btn"
-                      onClick={() => runEmployeeCheckInAction(selectedJob, "LEAVE_SITE")}
-                      disabled={employeeJobActionSaving}
-                    >
-                      Leave Site
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-btn employee-top-action-btn"
-                      onClick={() => runEmployeeCheckInAction(selectedJob, "COMPLETE_JOB")}
-                      disabled={employeeJobActionSaving}
-                    >
-                      Complete Job
-                    </button>
-                  </div>
-
-                  {travelMapChoice ? (
-                    <div className="employee-map-chooser">
-                      <p>
-                        Open directions for <strong>{travelMapChoice.title}</strong>
-                      </p>
-                      <div className="employee-manage-actions">
-                        <button
-                          type="button"
-                          className="primary-btn"
-                          onClick={() => openTravelMapLink(travelMapChoice.google)}
-                        >
-                          Open Google Maps
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => openTravelMapLink(travelMapChoice.apple)}
-                        >
-                          Open Apple Maps
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => setTravelMapChoice(null)}
-                        >
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="employee-checkin-times">
-                    <p><strong>Shift Started:</strong> {formatDateTime(selectedJobCheckInEvents.START_SHIFT)}</p>
-                    <p><strong>Arrived On Site:</strong> {formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
-                    <p><strong>Left Site:</strong> {formatDateTime(selectedJobCheckInEvents.LEAVE_SITE)}</p>
-                    <p><strong>Completed:</strong> {formatDateTime(selectedJobCheckInEvents.COMPLETE_JOB)}</p>
-                  </div>
-                </div>
-              ) : null}
-
               {canManageJobs && editingJobId === selectedJob.id ? (
                 <div className="job-edit-grid">
+                  <div className="timer-panel full-width-field">
+                    <p className="timer-heading">Time Tracking</p>
+                    <p className="timer-value">{formatDuration(selectedJobElapsedSeconds)}</p>
+                    <p className="timer-hours">Billable hours: {selectedJobBillableHours}</p>
+                    {canControlTimer && canManageJobs ? (
+                      <div className="timer-actions">
+                        {isTimerRunning(selectedJob) ? (
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            onClick={() => pauseTimerForJob(selectedJob)}
+                            disabled={timerSaving}
+                          >
+                            {timerSaving ? "Saving..." : appRole === "employee" ? "Pause Job" : "Pause"}
+                          </button>
+                        ) : (
+                          <button
+                            className="primary-btn"
+                            type="button"
+                            onClick={() => startTimerForJob(selectedJob)}
+                            disabled={timerSaving}
+                          >
+                            {timerSaving ? "Saving..." : appRole === "employee" ? "Start Job" : "Start"}
+                          </button>
+                        )}
+                        {canManageJobs ? (
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            onClick={() => resetTimerForJob(selectedJob)}
+                            disabled={timerSaving}
+                          >
+                            Reset
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {canManageJobs ? (
+                      <div className="timer-manual-row">
+                        <label>
+                          Add missed time (minutes)
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={manualTimeMinutes}
+                            onChange={(e) => setManualTimeMinutes(e.target.value)}
+                            placeholder="e.g. 30"
+                            disabled={timerSaving}
+                          />
+                        </label>
+                        <button
+                          className="ghost-btn"
+                          type="button"
+                          onClick={() => addManualTimeToJob(selectedJob, manualTimeMinutes)}
+                          disabled={timerSaving || !String(manualTimeMinutes || "").trim()}
+                        >
+                          Add Time
+                        </button>
+                        <button
+                          className="ghost-btn"
+                          type="button"
+                          onClick={() => addManualTimeToJob(selectedJob, manualTimeMinutes, "subtract")}
+                          disabled={timerSaving || !String(manualTimeMinutes || "").trim()}
+                        >
+                          Minus Time
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {timerNotice.message ? (
+                      <p
+                        className={`notice-text ${
+                          timerNotice.type === "error"
+                            ? "notice-text--error"
+                            : "notice-text--success"
+                        }`}
+                      >
+                        {timerNotice.message}
+                      </p>
+                    ) : null}
+                  </div>
+
                   <label>
                     Title
                     <input
@@ -7629,6 +8683,17 @@ export default function App() {
                         setEditForm((form) => ({ ...form, title: e.target.value }))
                       }
                       placeholder="Well Number Or Job Title"
+                    />
+                  </label>
+
+                  <label>
+                    Job # / Invoice #
+                    <input
+                      value={editForm.job_number}
+                      onChange={(e) =>
+                        setEditForm((form) => ({ ...form, job_number: e.target.value }))
+                      }
+                      placeholder="QB invoice number"
                     />
                   </label>
 
@@ -7682,6 +8747,7 @@ export default function App() {
                       <option value="In Progress">In Progress</option>
                       <option value="Paused">Paused</option>
                       <option value="On Hold">On Hold</option>
+                      <option value="Work To Invoice">Work To Invoice</option>
                       <option value="Completed">Completed</option>
                     </select>
                   </label>
@@ -7713,115 +8779,51 @@ export default function App() {
                     {isEmployeeDetailsSimpleView ? (
                       <>
                         <div className="job-summary-item job-summary-item--full">
-                          <span className="job-summary-label">Title</span>
-                          <p className="job-summary-value">{selectedJob.title || "Not set"}</p>
-                        </div>
-                        <div className="job-summary-item job-summary-item--full">
-                          <span className="job-summary-label">Job Description</span>
-                          <p className="job-summary-value">{selectedJob.job_description || "None"}</p>
-                        </div>
-                        <div className="job-summary-item job-summary-item--full">
-                          <span className="job-summary-label">Location</span>
-                          <p className="job-summary-value">{selectedJob.location || "Not set"}</p>
-                        </div>
-                        {selectedJobMapLinks ? (
-                          <div className="job-summary-item job-summary-item--full">
-                            <span className="job-summary-label">Maps</span>
+                          <div className="job-summary-secondary-row">
+                            <p className="job-summary-value"><strong>Location:</strong> {selectedJob.location || "Not set"}</p>
+                            {selectedJobMapLinks ? (
                             <p className="job-summary-value map-links-row">
                               <a href={selectedJobMapLinks.apple} target="_blank" rel="noreferrer">Apple Maps</a>
                               <span>|</span>
                               <a href={selectedJobMapLinks.google} target="_blank" rel="noreferrer">Google Maps</a>
                             </p>
+                            ) : null}
                           </div>
-                        ) : null}
+                        </div>
                       </>
                     ) : (
                       <>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Title</span>
-                          <p className="job-summary-value">{selectedJob.title || "Not set"}</p>
-                        </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Job #</span>
-                          <p className="job-summary-value">{selectedJob.job_number || "Not set"}</p>
-                        </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Status</span>
-                          <p className="job-summary-value">
-                            <span className={`status-pill ${getStatusPillClass(selectedJob.status)}`}>
-                              {selectedJob.status || "Not set"}
-                            </span>
-                          </p>
-                        </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Phase</span>
-                          <p className="job-summary-value">
-                            {selectedJobPhaseInfo
-                              ? `${selectedJobPhaseInfo.currentPhase} of ${selectedJobPhaseJobs.length}`
-                              : "1"}
-                          </p>
-                        </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Assigned To</span>
-                          <p className="job-summary-value">{formatAssignees(selectedJob.assigned_to)}</p>
-                          {canManageJobs ? (
-                            <div className="employee-manage-actions">
-                              <select
-                                value={detailsAssignName}
-                                onChange={(e) => setDetailsAssignName(e.target.value)}
-                                disabled={assigningJobId === selectedJob.id}
-                              >
-                                <option value="">Select employee</option>
-                                {assignableEmployeeNames.map((name) => (
-                                  <option key={`details-assign-${name}`} value={name}>
-                                    {name}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                className="primary-btn"
-                                onClick={assignSelectedJobFromDetails}
-                                disabled={assigningJobId === selectedJob.id || !detailsAssignName}
-                              >
-                                {assigningJobId === selectedJob.id ? "Assigning..." : "Assign To"}
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Scheduled Date</span>
-                          <p className="job-summary-value">{formatScheduledDate(selectedJob.scheduled_date)}</p>
-                        </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Arrived On Site</span>
-                          <p className="job-summary-value">{formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
-                        </div>
                         <div className="job-summary-item job-summary-item--full">
-                          <span className="job-summary-label">Job Description</span>
-                          <p className="job-summary-value">{selectedJob.job_description || "None"}</p>
-                        </div>
-                        <div className="job-summary-item job-summary-item--full">
-                          <span className="job-summary-label">Location</span>
-                          <p className="job-summary-value">{selectedJob.location || "Not set"}</p>
-                        </div>
-                        {selectedJobMapLinks ? (
-                          <div className="job-summary-item job-summary-item--full">
-                            <span className="job-summary-label">Maps</span>
-                            <p className="job-summary-value map-links-row">
-                              <a href={selectedJobMapLinks.apple} target="_blank" rel="noreferrer">Apple Maps</a>
-                              <span>|</span>
-                              <a href={selectedJobMapLinks.google} target="_blank" rel="noreferrer">Google Maps</a>
+                          <div className="job-summary-primary-row">
+                            <p className="job-summary-value"><strong>Title:</strong> {selectedJob.title || "Not set"}</p>
+                            <p className="job-summary-value"><strong>Job #:</strong> {selectedJob.job_number || "Not set"}</p>
+                            <p className="job-summary-value">
+                              <strong>Status:</strong>{" "}
+                              <span className={`status-pill ${getStatusPillClass(selectedJob.status)}`}>
+                                {selectedJob.status || "Not set"}
+                              </span>
                             </p>
+                            <p className="job-summary-value">
+                              <strong>Phase:</strong>{" "}
+                              {selectedJobPhaseInfo
+                                ? `${selectedJobPhaseInfo.currentPhase} of ${selectedJobPhaseJobs.length}`
+                                : "1"}
+                            </p>
+                            <p className="job-summary-value"><strong>Assigned To:</strong> {formatAssignees(selectedJob.assigned_to)}</p>
+                            <p className="job-summary-value"><strong>Assigned Date:</strong> {formatWorkOrderScheduledDate(selectedJob)}</p>
                           </div>
-                        ) : null}
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Created</span>
-                          <p className="job-summary-value">{formatDateTime(selectedJob.created_at)}</p>
                         </div>
-                        <div className="job-summary-item">
-                          <span className="job-summary-label">Updated</span>
-                          <p className="job-summary-value">{formatDateTime(selectedJob.updated_at)}</p>
+                        <div className="job-summary-item job-summary-item--full">
+                          <div className="job-summary-secondary-row">
+                            <p className="job-summary-value"><strong>Location:</strong> {selectedJob.location || "Not set"}</p>
+                            {selectedJobMapLinks ? (
+                              <p className="job-summary-value map-links-row">
+                                <a href={selectedJobMapLinks.apple} target="_blank" rel="noreferrer">Apple Maps</a>
+                                <span>|</span>
+                                <a href={selectedJobMapLinks.google} target="_blank" rel="noreferrer">Google Maps</a>
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       </>
                     )}
@@ -7837,6 +8839,44 @@ export default function App() {
                     >
                       {employeeAssignNotice.message}
                     </p>
+                  ) : null}
+
+                  {isEmployeeDetailsSimpleView ? (
+                    <div className="details-toggle-row">
+                      <button
+                        type="button"
+                        className="ghost-btn details-toggle-btn"
+                        onClick={() => setShowNotesPanel((current) => !current)}
+                      >
+                        Notes
+                        <span className="details-toggle-count">
+                          {selectedJobNoteEntries.length + (selectedJob.job_description ? 1 : 0) + (selectedJobCheckInEvents.START_SHIFT ? 1 : 0) + (selectedJobCheckInEvents.ARRIVE_ON_SITE ? 1 : 0) + (selectedJobCheckInEvents.LEAVE_SITE ? 1 : 0) + (selectedJobCheckInEvents.END_SHIFT ? 1 : 0) + 1}
+                        </span>
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {!isEmployeeDetailsSimpleView ? (
+                    <div className="details-toggle-row">
+                      <button
+                        type="button"
+                        className="ghost-btn details-toggle-btn"
+                        onClick={() => setShowNotesPanel((current) => !current)}
+                      >
+                        Notes
+                        <span className="details-toggle-count">
+                          {selectedJobNoteEntries.length + (selectedJob.job_description ? 1 : 0)}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn details-toggle-btn"
+                        onClick={() => setShowHistoryPanel((current) => !current)}
+                      >
+                        Job History
+                        <span className="details-toggle-count">{jobEvents.length + 3}</span>
+                      </button>
+                    </div>
                   ) : null}
 
                   {!isEmployeeDetailsSimpleView && selectedJobPhaseJobs.length > 1 ? (
@@ -7879,7 +8919,7 @@ export default function App() {
                                 <p className="events-list-meta">
                                   {job.job_number || "No job #"} | {formatAssignees(job.assigned_to)}
                                 </p>
-                                <p className="events-list-meta">{formatScheduledDate(job.scheduled_date)}</p>
+                                <p className="events-list-meta">{formatWorkOrderScheduledDate(job)}</p>
                               </div>
                               {!isCurrent ? (
                                 <button
@@ -7899,13 +8939,81 @@ export default function App() {
                     </div>
                   ) : null}
 
-                  {!isEmployeeDetailsSimpleView ? (
+                  {isEmployeeDetailsSimpleView && showNotesPanel ? (
                     <div className="notes-display-block">
                       <div className="notes-display-head">
                         <strong>Notes</strong>
-                        <span>{selectedJobNoteEntries.length}</span>
+                        <span>
+                          {selectedJobNoteEntries.length + (selectedJob.job_description ? 1 : 0) + (selectedJobCheckInEvents.START_SHIFT ? 1 : 0) + (selectedJobCheckInEvents.ARRIVE_ON_SITE ? 1 : 0) + (selectedJobCheckInEvents.LEAVE_SITE ? 1 : 0) + (selectedJobCheckInEvents.END_SHIFT ? 1 : 0) + 1}
+                        </span>
                       </div>
-                      {selectedJobNoteEntries.length === 0 ? (
+                      {selectedJob.job_description ? (
+                        <div className="notes-display-description">
+                          <p className="notes-display-meta">Job Description</p>
+                          <p className="notes-display-text">{selectedJob.job_description}</p>
+                        </div>
+                      ) : null}
+                      {selectedJobCheckInEvents.START_SHIFT ? (
+                        <div className="notes-display-description">
+                          <p className="notes-display-meta">Shift Started</p>
+                          <p className="notes-display-text">{formatDateTime(selectedJobCheckInEvents.START_SHIFT)}</p>
+                        </div>
+                      ) : null}
+                      {selectedJobCheckInEvents.ARRIVE_ON_SITE ? (
+                        <div className="notes-display-description">
+                          <p className="notes-display-meta">Arrived On Site</p>
+                          <p className="notes-display-text">{formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}</p>
+                        </div>
+                      ) : null}
+                      {selectedJobCheckInEvents.LEAVE_SITE ? (
+                        <div className="notes-display-description">
+                          <p className="notes-display-meta">Left Site</p>
+                          <p className="notes-display-text">{formatDateTime(selectedJobCheckInEvents.LEAVE_SITE)}</p>
+                        </div>
+                      ) : null}
+                      {selectedJobCheckInEvents.END_SHIFT ? (
+                        <div className="notes-display-description">
+                          <p className="notes-display-meta">Returned To Shop / End Shift</p>
+                          <p className="notes-display-text">{formatDateTime(selectedJobCheckInEvents.END_SHIFT)}</p>
+                        </div>
+                      ) : null}
+                      <div className="notes-display-description">
+                        <p className="notes-display-meta">Completed</p>
+                        <p className="notes-display-text">{formatDateTime(selectedJobCheckInEvents.COMPLETE_JOB)}</p>
+                      </div>
+                      {selectedJobNoteEntries.length === 0 && !selectedJob.job_description && !selectedJobCheckInEvents.START_SHIFT && !selectedJobCheckInEvents.ARRIVE_ON_SITE && !selectedJobCheckInEvents.LEAVE_SITE && !selectedJobCheckInEvents.END_SHIFT && !selectedJobCheckInEvents.COMPLETE_JOB ? (
+                        <p className="notes-display-empty">No notes yet.</p>
+                      ) : (
+                        <ul className="notes-display-list">
+                          {selectedJobNoteEntriesNewestFirst.map((entry) => (
+                            <li key={entry.id}>
+                              <p className="notes-display-meta">
+                                {entry.author || "Update"}
+                                {entry.timestamp ? ` | ${entry.timestamp}` : ""}
+                              </p>
+                              <p className="notes-display-text">{entry.text}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {!isEmployeeDetailsSimpleView && showNotesPanel ? (
+                    <div className="notes-display-block">
+                      <div className="notes-display-head">
+                        <strong>Notes</strong>
+                        <span>
+                          {selectedJobNoteEntries.length + (selectedJob.job_description ? 1 : 0)}
+                        </span>
+                      </div>
+                      {selectedJob.job_description ? (
+                        <div className="notes-display-description">
+                          <p className="notes-display-meta">Job Description</p>
+                          <p className="notes-display-text">{selectedJob.job_description}</p>
+                        </div>
+                      ) : null}
+                      {selectedJobNoteEntries.length === 0 && !selectedJob.job_description ? (
                         <p className="notes-display-empty">No notes yet.</p>
                       ) : (
                         <ul className="notes-display-list">
@@ -8029,6 +9137,94 @@ export default function App() {
                     </div>
                   ) : null}
 
+                  {appRole === "employee" ? (
+                    <div className="employee-checkin-panel employee-checkin-panel--top">
+                      <h4>Job Actions</h4>
+                      <div className="employee-checkin-actions employee-checkin-actions--top">
+                        <button
+                          type="button"
+                          className="primary-btn employee-top-action-btn"
+                          onClick={() => handleEmployeeTravelToJob(selectedJob)}
+                          disabled={employeeJobActionSaving || timerSaving}
+                        >
+                          Travel To Job
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-btn employee-top-action-btn"
+                          onClick={() => runEmployeeCheckInAction(selectedJob, "ARRIVE_ON_SITE")}
+                          disabled={employeeJobActionSaving}
+                        >
+                          Arrive On Site
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-btn employee-top-action-btn"
+                          onClick={() => pauseTimerForJob(selectedJob)}
+                          disabled={timerSaving}
+                        >
+                          Pause Job
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-btn employee-top-action-btn"
+                          onClick={() => runEmployeeCheckInAction(selectedJob, "LEAVE_SITE")}
+                          disabled={employeeJobActionSaving}
+                        >
+                          Leave Site
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-btn employee-top-action-btn"
+                          onClick={() => runEmployeeCheckInAction(selectedJob, "END_SHIFT")}
+                          disabled={employeeJobActionSaving}
+                        >
+                          Returned To Shop / End Shift
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-btn employee-top-action-btn"
+                          onClick={() => runEmployeeCheckInAction(selectedJob, "COMPLETE_JOB")}
+                          disabled={employeeJobActionSaving}
+                        >
+                          {getCompleteActionLabel(selectedJob)}
+                        </button>
+                      </div>
+
+                      {travelMapChoice ? (
+                        <div className="employee-map-chooser">
+                          <p>
+                            Open directions for <strong>{travelMapChoice.title}</strong>
+                          </p>
+                          <div className="employee-manage-actions">
+                            <button
+                              type="button"
+                              className="primary-btn"
+                              onClick={() => openTravelMapLink(travelMapChoice.google)}
+                            >
+                              Open Google Maps
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => openTravelMapLink(travelMapChoice.apple)}
+                            >
+                              Open Apple Maps
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => setTravelMapChoice(null)}
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                    </div>
+                  ) : null}
+
                   {!isEmployeeDetailsSimpleView ? (
                     <>
                       <div className="documents-panel">
@@ -8126,8 +9322,26 @@ export default function App() {
                         ) : null}
                       </div>
 
-                      <div className="events-panel">
+                      {showHistoryPanel ? (
+                        <div className="events-panel">
                         <h4>Job History Timeline</h4>
+
+                        <ul className="events-list">
+                          <li>
+                            <p className="events-list-title">Arrived On Site</p>
+                            <p className="events-list-meta">
+                              {formatDateTime(selectedJobCheckInEvents.ARRIVE_ON_SITE)}
+                            </p>
+                          </li>
+                          <li>
+                            <p className="events-list-title">Work Order Created</p>
+                            <p className="events-list-meta">{formatDateTime(selectedJob.created_at)}</p>
+                          </li>
+                          <li>
+                            <p className="events-list-title">Last Updated</p>
+                            <p className="events-list-meta">{formatDateTime(selectedJob.updated_at)}</p>
+                          </li>
+                        </ul>
 
                         {eventsLoading ? <p>Loading timeline...</p> : null}
 
@@ -8148,11 +9362,43 @@ export default function App() {
                             ))}
                           </ul>
                         ) : null}
-                      </div>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
               )}
+
+              {canManageJobs && editingJobId === selectedJob.id ? (
+                <div className="job-details-actions job-details-actions--bottom">
+                  <button className="ghost-btn" onClick={cancelEditing} disabled={savingEdit}>
+                    Cancel
+                  </button>
+                  <button className="primary-btn" onClick={saveEditedJob} disabled={savingEdit}>
+                    {savingEdit ? "Saving..." : "Save Changes"}
+                  </button>
+                  <button
+                    className="ghost-btn job-delete-btn"
+                    onClick={() => deleteSelectedWorkOrder(selectedJob, canManageJobs)}
+                    disabled={savingEdit || deletingJob}
+                  >
+                    {deletingJob ? "Deleting..." : "Delete Work Order"}
+                  </button>
+                </div>
+              ) : canManageJobs ? (
+                <div className="job-details-actions job-details-actions--bottom">
+                  <button className="primary-btn" onClick={() => startEditing(selectedJob)}>
+                    Edit Work Order
+                  </button>
+                  <button
+                    className="ghost-btn job-delete-btn"
+                    onClick={() => deleteSelectedWorkOrder(selectedJob, canManageJobs)}
+                    disabled={deletingJob}
+                  >
+                    {deletingJob ? "Deleting..." : "Delete Work Order"}
+                  </button>
+                </div>
+              ) : null}
             </section>
           ) : (
             <section className="job-details-panel">
