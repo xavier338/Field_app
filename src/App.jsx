@@ -1281,6 +1281,10 @@ export default function App() {
     return `${keys[0]} - ${keys[keys.length - 1]}`
   }
 
+  function isAdminRemovedTimeOffRequest(request) {
+    return /\[REMOVED_BY_ADMIN:/i.test(String(request?.reason || ""))
+  }
+
   function getWorkOrderScheduleDateKeys(job) {
     const { startDate, endDate } = getWorkOrderScheduleRange(job)
     const normalizedStart = normalizeDateInput(startDate)
@@ -2891,7 +2895,7 @@ export default function App() {
       return
     }
 
-    setTimeOffRequests(data || [])
+    setTimeOffRequests((data || []).filter((request) => !isAdminRemovedTimeOffRequest(request)))
     setTimeOffLoading(false)
   }
 
@@ -2916,7 +2920,7 @@ export default function App() {
       return
     }
 
-    setAdminTimeOffRequests(data || [])
+    setAdminTimeOffRequests((data || []).filter((request) => !isAdminRemovedTimeOffRequest(request)))
     setAdminTimeOffLoading(false)
   }
 
@@ -3173,7 +3177,7 @@ export default function App() {
       const { error: archiveError } = await supabase
         .from(TIME_OFF_REQUESTS_TABLE)
         .update({
-          status: "Removed",
+          status: "Denied",
           reason: archivedReason || null
         })
         .eq("id", requestId)
