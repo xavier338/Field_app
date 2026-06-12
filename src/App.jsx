@@ -3150,9 +3150,48 @@ export default function App() {
       .eq("id", requestId)
 
     if (error) {
+      const deleteDenied = /permission denied|row-level security|rls/i.test(
+        String(error.message || "")
+      )
+
+      if (!deleteDenied) {
+        setTimeOffNotice({
+          type: "error",
+          message: `Could not remove request: ${error.message}`
+        })
+        setTimeOffActionId("")
+        return
+      }
+
+      const archivedReason = [
+        String(request.reason || "").trim(),
+        `[REMOVED_BY_ADMIN:${new Date().toISOString()}]`
+      ]
+        .filter(Boolean)
+        .join(" ")
+
+      const { error: archiveError } = await supabase
+        .from(TIME_OFF_REQUESTS_TABLE)
+        .update({
+          status: "Removed",
+          reason: archivedReason || null
+        })
+        .eq("id", requestId)
+
+      if (archiveError) {
+        setTimeOffNotice({
+          type: "error",
+          message: `Could not remove request: ${archiveError.message}`
+        })
+        setTimeOffActionId("")
+        return
+      }
+
+      await loadAdminTimeOffRequests()
+      await loadApprovedTimeOffRequests()
       setTimeOffNotice({
-        type: "error",
-        message: `Could not remove request: ${error.message}`
+        type: "success",
+        message: "Time-off request removed."
       })
       setTimeOffActionId("")
       return
